@@ -44,6 +44,13 @@ const DEMO_RESULTS = {
   strengths: ["focus", "pacing"],
   challenges: ["advanced vocabulary"]
 };
+const demoProfile = {
+  level: DEMO_RESULTS.level,
+  readingSpeed: DEMO_RESULTS.readingSpeed,
+  comprehensionAccuracy: DEMO_RESULTS.comprehensionAccuracy,
+  strengths: DEMO_RESULTS.strengths,
+  challenges: DEMO_RESULTS.challenges,
+};
 
 export default function Calibration() {
   const { isAuthenticated } = useAuth();
@@ -130,6 +137,15 @@ export default function Calibration() {
           Math.round((passage.text.split(/\s+/).length / Math.max(readingTime || 1, 1)) * 60)
         ),
       });
+      localStorage.setItem(
+        "manus-runtime-user-info",
+        JSON.stringify({
+          id: "demo-user",
+          name: "Demo Reader",
+          email: "demo@adaptive-reader.local",
+          profile: demoProfile,
+        })
+      );
       setStep('results');
       return;
     }
@@ -327,7 +343,17 @@ export default function Calibration() {
             </p>
           </div>
 
-          <Button size="lg" className="w-full" onClick={() => setLocation("/library")}>
+          <Button
+            size="lg"
+            className="w-full"
+            onClick={() => {
+              if (demoMode) {
+                setLocation("/reader/1");
+              } else {
+                setLocation("/library");
+              }
+            }}
+          >
             Start Reading
           </Button>
         </Card>
