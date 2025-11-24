@@ -69,6 +69,12 @@ export const contentLibrary = mysqlTable("contentLibrary", {
   wordCount: int("wordCount"),
   /** Category like "fiction", "non-fiction", "science" */
   category: varchar("category", { length: 100 }),
+  /** Source type: pre_generated (demo books) or pdf_upload */
+  sourceType: mysqlEnum("sourceType", ["pre_generated", "pdf_upload"]).default("pre_generated").notNull(),
+  /** URL to uploaded PDF file (if sourceType is pdf_upload) */
+  pdfUrl: varchar("pdfUrl", { length: 512 }),
+  /** CEFR level classification (A1, A2, B1, B2, C1, C2) */
+  cefrLevel: varchar("cefrLevel", { length: 10 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

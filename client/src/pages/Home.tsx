@@ -65,9 +65,12 @@ export default function Home() {
             Every paragraph adapts to your level, keeping you in the perfect flow state 
             for maximum learning and comprehension.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
+          <div className="mt-10 flex items-center justify-center gap-4 flex-wrap">
             <Button size="lg" onClick={handleGetStarted} className="text-lg px-8">
               {profile ? "Continue Reading" : "Start 60-Second Test"}
+            </Button>
+            <Button size="lg" variant="outline" onClick={() => setLocation("/upload")}>
+              Upload PDF
             </Button>
             {profile && (
               <Button size="lg" variant="outline" onClick={() => setLocation("/profile")}>

@@ -4,10 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import MindReaderSlider from "@/components/MindReaderSlider";
 import { useWordLevelMorph, getTypographyVars, triggerHaptic, WordSequenceEntry } from "@/hooks/useWordLevelMorph";
+import { mapLevelToCEFR, getCEFRDescription } from "@/lib/cefr";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState, useRef, useCallback, useMemo, CSSProperties } from "react";
 import { useLocation, useParams } from "wouter";
@@ -83,11 +85,8 @@ export default function Reader() {
   // Get typography CSS variables
   const typographyVars = getTypographyVars(microLevel);
 
-  useEffect(() => {
-    if (!isAuthenticated && !demoMode) {
-      window.location.href = getLoginUrl();
-    }
-  }, [isAuthenticated, demoMode]);
+  // Public access: demo mode is default when auth is disabled
+  // No redirect needed - allow public reading
 
   const demoProfile = useMemo(() => {
     if (!demoMode || typeof window === "undefined") return null;
@@ -261,7 +260,32 @@ export default function Reader() {
   const effectiveContent = demoMode ? demoContentMeta : content;
   const isLoadingChapter = demoMode ? demoLoading || !demoChapters?.[currentChapter] : isLoadingChapterQuery;
 
-  if (!isAuthenticated || !effectiveProfile || !effectiveContent || (demoMode && !demoChapters?.[currentChapter] && demoLoading)) {
+  // Show loading state
+  if (demoMode && (!demoChapters?.[currentChapter] && demoLoading)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // For non-demo mode, check if we have content
+  if (!demoMode && (!content || !profile)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading content...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Ensure we have effective profile and content
+  if (!effectiveProfile || !effectiveContent) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -315,9 +339,23 @@ export default function Reader() {
                 onCheckedChange={setPhysicalMode}
               />
             </div>
-            <Badge variant="secondary">
-              {LEVEL_NAMES[Math.round(microLevel) as keyof typeof LEVEL_NAMES]}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">
+                {LEVEL_NAMES[Math.round(microLevel) as keyof typeof LEVEL_NAMES]}
+              </Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="font-mono">
+                      {mapLevelToCEFR(Math.round(microLevel))}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{getCEFRDescription(mapLevelToCEFR(Math.round(microLevel)))}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         </div>
       </header>

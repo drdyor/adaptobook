@@ -9,6 +9,7 @@ import Calibration from "./pages/Calibration";
 import Profile from "./pages/Profile";
 import Library from "./pages/Library";
 import Reader from "./pages/Reader";
+import Upload from "./pages/Upload";
 
 function Router() {
   return (
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/calibration" component={Calibration} />
       <Route path="/profile" component={Profile} />
       <Route path="/library" component={Library} />
+      <Route path="/upload" component={Upload} />
       <Route path="/reader/:id" component={Reader} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

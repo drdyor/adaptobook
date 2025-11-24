@@ -122,6 +122,9 @@ export default function Library() {
                 Your Level: <span className="font-bold text-primary">L{effectiveProfile.level}</span>
               </div>
             )}
+            <Button variant="outline" onClick={() => setLocation("/upload")}>
+              Upload PDF
+            </Button>
             <Button variant="ghost" onClick={() => setLocation("/profile")}>
               Profile
             </Button>

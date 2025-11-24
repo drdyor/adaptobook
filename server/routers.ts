@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { CALIBRATION_PASSAGES, assessReadingLevel, analyzePerformance } from './calibration';
+import { z } from "zod";
 import { 
   createCalibrationTest, 
   createReadingProfile, 
@@ -10,16 +11,22 @@ import {
   updateReadingProfile,
   getAllContent,
   getContentById,
+  createContent,
   createReadingSession,
   getActiveSessionByUserId,
   updateReadingSession,
   createProgressTracking,
   getSessionProgress,
   getParagraphVariant,
+  createParagraphVariant,
   getChapterVariants,
   getAllVariantsForContent
 } from './db';
-import { adaptTextToLevel } from './adaptation';
+import { adaptTextToLevel, adaptParagraph } from './adaptation';
+import { extractAndSplitPDF } from './_core/pdfExtraction';
+import { classifyTextCEFRCached } from './_core/cefr';
+import { storagePut } from './storage';
+import { checkRateLimit, getClientIP } from './_core/rateLimit';
 import { adaptWordLevelRouter } from "./adaptWordLevelRouter";
 
 export const appRouter = router({
@@ -247,6 +254,236 @@ export const appRouter = router({
         
         const adapted = await adaptTextToLevel(content.originalText, input.targetLevel);
         return adapted;
+      }),
+    
+    // Upload PDF and extract text
+    uploadPdf: publicProcedure
+      .input(
+        z.object({
+          title: z.string().min(1),
+          author: z.string().optional(),
+          pdfData: z.string(), // base64 encoded PDF
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        // Rate limiting: 10 PDF uploads per IP per day
+        const clientIP = getClientIP(ctx.req.headers as Record<string, string | string[] | undefined>);
+        const rateLimitKey = `pdf_upload:${clientIP}`;
+        const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1000); // 24 hours
+        
+        if (!allowed) {
+          throw new Error('Rate limit exceeded: Maximum 10 PDF uploads per day');
+        }
+        
+        // Decode base64 PDF
+        const pdfBuffer = Buffer.from(input.pdfData, 'base64');
+        
+        // Validate PDF size (max 10MB)
+        const sizeMB = pdfBuffer.length / (1024 * 1024);
+        if (sizeMB > 10) {
+          throw new Error('PDF file exceeds maximum size limit of 10MB');
+        }
+        
+        // Extract text from PDF
+        const paragraphs = await extractAndSplitPDF(pdfBuffer);
+        
+        if (paragraphs.length === 0) {
+          throw new Error('No text could be extracted from PDF');
+        }
+        
+        // Classify CEFR level
+        const sampleText = paragraphs.slice(0, 3).join(' ');
+        const cefrLevel = classifyTextCEFRCached(sampleText);
+        
+        // Store PDF file (optional, for future reference)
+        let pdfUrl: string | undefined;
+        try {
+          const { url } = await storagePut(
+            `pdfs/${Date.now()}-${input.title.replace(/[^a-z0-9]/gi, '-')}.pdf`,
+            pdfBuffer,
+            'application/pdf'
+          );
+          pdfUrl = url;
+        } catch (error) {
+          console.warn('Failed to store PDF file:', error);
+        }
+        
+        // Create content entry
+        const fullText = paragraphs.join('\n\n');
+        const wordCount = fullText.split(/\s+/).length;
+        
+        const contentResult = await createContent({
+          title: input.title,
+          author: input.author || null,
+          originalText: fullText,
+          baseDifficulty: 4, // Default to level 4 (original)
+          wordCount,
+          category: 'pdf_upload',
+          sourceType: 'pdf_upload',
+          pdfUrl: pdfUrl || null,
+          cefrLevel,
+        });
+        
+        const contentId = (contentResult as any).insertId;
+        
+        // Store paragraphs as level 4 (original) variants
+        // PDFs are treated as single "chapter" with paragraphs
+        for (let i = 0; i < paragraphs.length; i++) {
+          await createParagraphVariant({
+            contentId,
+            chapterNumber: 1,
+            paragraphIndex: i,
+            level: 4,
+            text: paragraphs[i],
+            originalText: paragraphs[i],
+          });
+        }
+        
+        return {
+          contentId,
+          title: input.title,
+          author: input.author,
+          paragraphCount: paragraphs.length,
+          cefrLevel,
+        };
+      }),
+    
+    // Adapt a paragraph on-the-fly
+    adaptParagraph: publicProcedure
+      .input(
+        z.object({
+          contentId: z.number(),
+          chapterNumber: z.number(),
+          paragraphIndex: z.number(),
+          currentLevel: z.number().min(1).max(4),
+          targetLevel: z.number().min(1).max(4),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        // Rate limiting: 50 paragraph adaptations per IP per day
+        const clientIP = getClientIP(ctx.req.headers as Record<string, string | string[] | undefined>);
+        const rateLimitKey = `adapt_paragraph:${clientIP}`;
+        const allowed = checkRateLimit(rateLimitKey, 50, 24 * 60 * 60 * 1000); // 24 hours
+        
+        if (!allowed) {
+          throw new Error('Rate limit exceeded: Maximum 50 paragraph adaptations per day');
+        }
+        
+        // Check if variant already exists
+        const existing = await getParagraphVariant(
+          input.contentId,
+          input.chapterNumber,
+          input.paragraphIndex,
+          input.targetLevel
+        );
+        
+        if (existing) {
+          return { text: existing.text };
+        }
+        
+        // Get original paragraph (level 4)
+        const original = await getParagraphVariant(
+          input.contentId,
+          input.chapterNumber,
+          input.paragraphIndex,
+          4
+        );
+        
+        if (!original) {
+          throw new Error('Paragraph not found');
+        }
+        
+        // Adapt paragraph using LLM
+        const adaptedText = await adaptParagraph(
+          original.text,
+          input.currentLevel,
+          input.targetLevel
+        );
+        
+        // Cache the result
+        await createParagraphVariant({
+          contentId: input.contentId,
+          chapterNumber: input.chapterNumber,
+          paragraphIndex: input.paragraphIndex,
+          level: input.targetLevel,
+          text: adaptedText,
+          originalText: original.text,
+        });
+        
+        return { text: adaptedText };
+      }),
+    
+    // Upload text file directly (simpler than PDF)
+    uploadText: publicProcedure
+      .input(
+        z.object({
+          title: z.string().min(1),
+          author: z.string().optional(),
+          textContent: z.string().min(100), // At least 100 characters
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        // Rate limiting: 10 uploads per IP per day
+        const clientIP = getClientIP(ctx.req.headers as Record<string, string | string[] | undefined>);
+        const rateLimitKey = `text_upload:${clientIP}`;
+        const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1000); // 24 hours
+        
+        if (!allowed) {
+          throw new Error('Rate limit exceeded: Maximum 10 uploads per day');
+        }
+        
+        // Split text into paragraphs
+        const paragraphs = input.textContent
+          .split(/\n\s*\n+/) // Split on double newlines
+          .map(p => p.replace(/\s+/g, ' ').trim()) // Normalize whitespace
+          .filter(p => p.length > 50) // Filter out very short paragraphs
+          .filter(p => !p.match(/^\d+$/)); // Filter out page numbers
+        
+        if (paragraphs.length === 0) {
+          throw new Error('No valid paragraphs found in text. Please ensure your text has proper paragraph breaks.');
+        }
+        
+        // Classify CEFR level
+        const sampleText = paragraphs.slice(0, 3).join(' ');
+        const cefrLevel = classifyTextCEFRCached(sampleText);
+        
+        // Create content entry
+        const wordCount = input.textContent.split(/\s+/).length;
+        
+        const contentResult = await createContent({
+          title: input.title,
+          author: input.author || null,
+          originalText: input.textContent,
+          baseDifficulty: 4, // Default to level 4 (original)
+          wordCount,
+          category: 'text_upload',
+          sourceType: 'pdf_upload', // Reuse same type for simplicity
+          pdfUrl: null,
+          cefrLevel,
+        });
+        
+        const contentId = (contentResult as any).insertId;
+        
+        // Store paragraphs as level 4 (original) variants
+        // Text files are treated as single "chapter" with paragraphs
+        for (let i = 0; i < paragraphs.length; i++) {
+          await createParagraphVariant({
+            contentId,
+            chapterNumber: 1,
+            paragraphIndex: i,
+            level: 4,
+            text: paragraphs[i],
+            originalText: paragraphs[i],
+          });
+        }
+        
+        return {
+          contentId,
+          title: input.title,
+          author: input.author,
+          paragraphCount: paragraphs.length,
+          cefrLevel,
+        };
       })
   }),
   

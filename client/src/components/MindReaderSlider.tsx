@@ -6,6 +6,7 @@
 
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { mapLevelToCEFR } from "@/lib/cefr";
 
 interface MindReaderSliderProps {
   microLevel: number;
@@ -15,10 +16,10 @@ interface MindReaderSliderProps {
 }
 
 const LEVEL_LABELS = [
-  { value: 1, label: "Starter", sublabel: "Grade 1-2" },
-  { value: 2, label: "Rising", sublabel: "Grade 5-6" },
-  { value: 3, label: "Advanced", sublabel: "Grade 8-9" },
-  { value: 4, label: "Original", sublabel: "Full text" },
+  { value: 1, label: "Starter", sublabel: "Grade 1-2", cefr: "A1" },
+  { value: 2, label: "Rising", sublabel: "Grade 5-6", cefr: "A2" },
+  { value: 3, label: "Advanced", sublabel: "Grade 8-9", cefr: "B1" },
+  { value: 4, label: "Original", sublabel: "Full text", cefr: "B2" },
 ];
 
 export default function MindReaderSlider({
@@ -62,6 +63,9 @@ export default function MindReaderSlider({
             <div className="text-xs font-medium">{level.label}</div>
             <div className="text-[10px] text-muted-foreground">
               {level.sublabel}
+            </div>
+            <div className="text-[10px] font-semibold mt-0.5 text-primary">
+              {level.cefr}
             </div>
           </div>
         ))}

@@ -13,6 +13,8 @@ export function useAuth(options?: UseAuthOptions) {
     import.meta.env.VITE_ENABLE_AUTH === "false" ||
     !import.meta.env.VITE_ENABLE_AUTH;
 
+  console.log('[useAuth] VITE_ENABLE_AUTH:', import.meta.env.VITE_ENABLE_AUTH, 'authDisabled:', authDisabled);
+
   if (authDisabled) {
     const demoUser = {
       id: "demo-user",

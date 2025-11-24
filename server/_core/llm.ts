@@ -214,10 +214,17 @@ const resolveApiUrl = () =>
     ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
     : "https://forge.manus.im/v1/chat/completions";
 
+const resolveOpenRouterUrl = () => "https://openrouter.ai/api/v1/chat/completions";
+
 const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+  // Prefer OpenRouter if available, fallback to Forge
+  if (!ENV.openRouterApiKey && !ENV.forgeApiKey) {
+    throw new Error("Either OPENROUTER_API_KEY or BUILT_IN_FORGE_API_KEY must be configured");
   }
+};
+
+const shouldUseOpenRouter = (): boolean => {
+  return !!ENV.openRouterApiKey;
 };
 
 const normalizeResponseFormat = ({
@@ -277,12 +284,29 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     output_schema,
     responseFormat,
     response_format,
+    maxTokens,
+    max_tokens,
   } = params;
 
+  const useOpenRouter = shouldUseOpenRouter();
+  const apiUrl = useOpenRouter ? resolveOpenRouterUrl() : resolveApiUrl();
+  const apiKey = useOpenRouter ? ENV.openRouterApiKey : ENV.forgeApiKey;
+
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: useOpenRouter ? "x-ai/grok-beta" : "gemini-2.5-flash",
     messages: messages.map(normalizeMessage),
   };
+
+  // OpenRouter-specific headers
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    authorization: `Bearer ${apiKey}`,
+  };
+
+  if (useOpenRouter) {
+    headers["HTTP-Referer"] = process.env.OPENROUTER_REFERER_URL || "https://adaptobook.com";
+    headers["X-Title"] = "AdaptoBook";
+  }
 
   if (tools && tools.length > 0) {
     payload.tools = tools;
@@ -296,9 +320,15 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
+  // Set max tokens (OpenRouter supports this, Forge has default)
+  const maxTokensValue = maxTokens || max_tokens;
+  if (maxTokensValue) {
+    payload.max_tokens = maxTokensValue;
+  } else if (!useOpenRouter) {
+    payload.max_tokens = 32768;
+    payload.thinking = {
+      "budget_tokens": 128
+    };
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({
@@ -312,12 +342,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(apiUrl, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
