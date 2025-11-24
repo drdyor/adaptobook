@@ -5,14 +5,23 @@ import { Badge } from "@/components/ui/badge";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, TrendingUp } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 export default function Library() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const { data: profile } = trpc.profile.get.useQuery();
-  const { data: content, isLoading } = trpc.content.list.useQuery();
+  const demoMode =
+    import.meta.env.VITE_ENABLE_AUTH === "false" ||
+    !import.meta.env.VITE_ENABLE_AUTH;
+  const [demoContent, setDemoContent] = useState<any>(null);
+
+  const { data: profile } = trpc.profile.get.useQuery(undefined, {
+    enabled: !demoMode,
+  });
+  const { data: content, isLoading } = trpc.content.list.useQuery(undefined, {
+    enabled: !demoMode,
+  });
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -24,7 +33,28 @@ export default function Library() {
     return null;
   }
 
-  if (!profile) {
+  const demoProfile = useMemo(() => {
+    if (!demoMode || typeof window === "undefined") return null;
+    try {
+      const stored = JSON.parse(localStorage.getItem("manus-runtime-user-info") ?? "null");
+      if (stored?.profile) {
+        return stored.profile;
+      }
+    } catch {
+      // ignore
+    }
+    return { level: 3 };
+  }, [demoMode]);
+
+  useEffect(() => {
+    if (!demoMode) return;
+    fetch("/demo-the-prince-variants.json")
+      .then((resp) => resp.json())
+      .then((data) => setDemoContent(data))
+      .catch((error) => console.error("[demo] Failed to load content", error));
+  }, [demoMode]);
+
+  if (!demoMode && !profile) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center">
@@ -41,6 +71,8 @@ export default function Library() {
     );
   }
 
+  const effectiveProfile = demoMode ? demoProfile : profile;
+
   const getDifficultyColor = (difficulty: number) => {
     if (difficulty <= 2) return "bg-green-500/10 text-green-500 border-green-500/20";
     if (difficulty <= 4) return "bg-blue-500/10 text-blue-500 border-blue-500/20";
@@ -55,6 +87,24 @@ export default function Library() {
     return "Expert";
   };
 
+  const effectiveContent = demoMode
+    ? demoContent
+      ? [
+          {
+            id: 1,
+            title: demoContent.title,
+            author: demoContent.author,
+            baseDifficulty: 4,
+            wordCount: demoContent.totalParagraphs * 100,
+            category: "classic-literature",
+            originalText: demoContent.variants.find((v: any) => v.level === 4)?.text ?? "",
+          },
+        ]
+      : []
+    : content;
+
+  const isContentLoading = demoMode ? !demoContent : isLoading;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -67,9 +117,11 @@ export default function Library() {
             <h1 className="text-xl font-bold">Content Library</h1>
           </div>
           <div className="flex items-center gap-4">
-            <div className="text-sm text-muted-foreground">
-              Your Level: <span className="font-bold text-primary">L{profile.level}</span>
-            </div>
+            {effectiveProfile?.level && (
+              <div className="text-sm text-muted-foreground">
+                Your Level: <span className="font-bold text-primary">L{effectiveProfile.level}</span>
+              </div>
+            )}
             <Button variant="ghost" onClick={() => setLocation("/profile")}>
               Profile
             </Button>
@@ -79,28 +131,30 @@ export default function Library() {
 
       <div className="container py-12">
         {/* Info Banner */}
-        <Card className="p-6 mb-8 bg-primary/5 border-primary/20">
-          <div className="flex items-start gap-4">
-            <BookOpen className="h-6 w-6 text-primary mt-1" />
-            <div>
-              <h3 className="font-semibold mb-1">Adaptive Reading</h3>
-              <p className="text-sm text-muted-foreground">
-                All content will be automatically adapted to your Level {profile.level}. 
-                Difficulty adjusts in real-time based on your comprehension.
-              </p>
+        {effectiveProfile?.level && (
+          <Card className="p-6 mb-8 bg-primary/5 border-primary/20">
+            <div className="flex items-start gap-4">
+              <BookOpen className="h-6 w-6 text-primary mt-1" />
+              <div>
+                <h3 className="font-semibold mb-1">Adaptive Reading</h3>
+                <p className="text-sm text-muted-foreground">
+                  All content will be automatically adapted to your Level {effectiveProfile.level}. 
+                  Difficulty adjusts in real-time based on your comprehension.
+                </p>
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {/* Content Grid */}
-        {isLoading ? (
+        {isContentLoading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Loading library...</p>
           </div>
-        ) : content && content.length > 0 ? (
+        ) : effectiveContent && effectiveContent.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {content.map((item: any) => (
+            {effectiveContent.map((item: any) => (
               <Card key={item.id} className="p-6 hover:border-primary/40 transition-colors">
                 <div className="mb-4">
                   <div className="flex items-start justify-between mb-2">

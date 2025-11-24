@@ -37,21 +37,32 @@ export default function Reader() {
 
   const contentId = parseInt(id || "0");
 
-  const { data: profile } = trpc.profile.get.useQuery();
+  const demoMode =
+    import.meta.env.VITE_ENABLE_AUTH === "false" ||
+    !import.meta.env.VITE_ENABLE_AUTH;
+
+  const [demoChapters, setDemoChapters] = useState<Record<number, { paragraphs: Array<{ levels: Record<number, string> }> }> | null>(null);
+  const [demoWordSequences, setDemoWordSequences] = useState<Record<string, WordSequenceEntry[]>>({});
+  const [demoContentMeta, setDemoContentMeta] = useState<any>(null);
+  const [demoLoading, setDemoLoading] = useState(demoMode);
+
+  const { data: profile } = trpc.profile.get.useQuery(undefined, {
+    enabled: !demoMode,
+  });
   const { data: content } = trpc.content.get.useQuery(
     { id: contentId },
-    { enabled: !!id }
+    { enabled: !!id && !demoMode }
   );
 
-  const { data: chapter, isLoading: isLoadingChapter } = trpc.content.getChapter.useQuery(
+  const { data: chapter, isLoading: isLoadingChapterQuery } = trpc.content.getChapter.useQuery(
     { contentId, chapterNumber: currentChapter },
-    { enabled: !!id }
+    { enabled: !!id && !demoMode }
   );
 
   // Fetch word-level data for the current paragraph
   const { data: wordSeq } = trpc.wordLevel.getWordSeq.useQuery(
     { contentId, paragraphIndex: currentParagraph },
-    { enabled: !!id && physicalMode }
+    { enabled: !!id && physicalMode && !demoMode }
   );
 
   const startSession = trpc.reading.startSession.useMutation({
@@ -64,7 +75,10 @@ export default function Reader() {
   const saveMicroLevel = trpc.wordLevel.saveMicroLevel.useMutation();
 
   // Get morphed text from word sequences
-  const morphedText = useWordLevelMorph(wordSeq as WordSequenceEntry[] | undefined, microLevel);
+  const effectiveWordSeq = demoMode
+    ? demoWordSequences[`${currentChapter}-${currentParagraph}`]
+    : (wordSeq as WordSequenceEntry[] | undefined);
+  const morphedText = useWordLevelMorph(effectiveWordSeq, microLevel);
 
   // Get typography CSS variables
   const typographyVars = getTypographyVars(microLevel);
@@ -75,24 +89,66 @@ export default function Reader() {
     }
   }, [isAuthenticated]);
 
+  const demoProfile = useMemo(() => {
+    if (!demoMode || typeof window === "undefined") return null;
+    try {
+      const stored = JSON.parse(localStorage.getItem("manus-runtime-user-info") ?? "null");
+      if (stored?.profile) {
+        return {
+          ...stored.profile,
+          microLevel: stored.profile.microLevel ?? Math.min(4, Math.max(1, stored.profile.level ?? 2)),
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return { level: 3, microLevel: 2 };
+  }, [demoMode]);
+
   useEffect(() => {
+    if (demoMode) {
+      setMicroLevel(demoProfile?.microLevel ?? 2);
+      return;
+    }
+
     if (content && profile && !sessionId) {
-      // Use profile microLevel if available, otherwise use level
       const initialMicroLevel = profile.microLevel ?? Math.min(4, Math.max(1, profile.level));
       setMicroLevel(initialMicroLevel);
 
       startSession.mutate({
         contentId: content.id,
-        difficultyLevel: Math.round(initialMicroLevel)
+        difficultyLevel: Math.round(initialMicroLevel),
       });
     }
-  }, [content, profile]);
+  }, [demoMode, content, profile, sessionId, demoProfile, startSession]);
 
   useEffect(() => {
+    if (demoMode) {
+      if (demoChapters && demoChapters[currentChapter]) {
+        setChapterData(demoChapters[currentChapter]);
+      }
+      return;
+    }
+
     if (chapter) {
       setChapterData(chapter);
     }
-  }, [chapter]);
+  }, [chapter, demoMode, demoChapters, currentChapter]);
+
+  useEffect(() => {
+    if (!demoMode) return;
+    setDemoLoading(true);
+    fetch("/demo-the-prince-variants.json")
+      .then((resp) => resp.json())
+      .then((data) => {
+        const { chapters, wordSequences } = transformDemoVariants(data);
+        setDemoChapters(chapters);
+        setDemoWordSequences(wordSequences);
+        setDemoContentMeta(data);
+      })
+      .catch((error) => console.error("[demo] Failed to load variants", error))
+      .finally(() => setDemoLoading(false));
+  }, [demoMode]);
 
   // Debounced save of microLevel
   const debouncedSaveMicroLevel = useMemo(
@@ -117,10 +173,20 @@ export default function Reader() {
       triggerHaptic(value);
     }
 
-    // Debounced save to profile
-    debouncedSaveMicroLevel(value);
+    if (!demoMode) {
+      debouncedSaveMicroLevel(value);
+    } else if (typeof window !== "undefined") {
+      try {
+        const stored = JSON.parse(localStorage.getItem("manus-runtime-user-info") ?? "{}");
+        stored.profile = stored.profile ?? {};
+        stored.profile.microLevel = value;
+        localStorage.setItem("manus-runtime-user-info", JSON.stringify(stored));
+      } catch {
+        // ignore
+      }
+    }
 
-    if (sessionId) {
+    if (sessionId && !demoMode) {
       updateProgress.mutate({
         sessionId,
         paragraphIndex: currentParagraph,
@@ -163,7 +229,7 @@ export default function Reader() {
       const nextIndex = currentParagraph + 1;
       setCurrentParagraph(nextIndex);
       
-      if (sessionId) {
+      if (sessionId && !demoMode) {
         updateProgress.mutate({
           sessionId,
           paragraphIndex: nextIndex,
@@ -191,7 +257,11 @@ export default function Reader() {
     }
   };
 
-  if (!isAuthenticated || !content || !profile) {
+  const effectiveProfile = demoMode ? demoProfile : profile;
+  const effectiveContent = demoMode ? demoContentMeta : content;
+  const isLoadingChapter = demoMode ? demoLoading || !demoChapters?.[currentChapter] : isLoadingChapterQuery;
+
+  if (!isAuthenticated || !effectiveProfile || !effectiveContent || (demoMode && !demoChapters?.[currentChapter] && demoLoading)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -255,9 +325,9 @@ export default function Reader() {
       <div className="container py-8 max-w-4xl">
         {/* Title */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">{content.title}</h1>
-          {content.author && (
-            <p className="text-muted-foreground">by {content.author}</p>
+          <h1 className="text-3xl font-bold mb-2">{effectiveContent?.title ?? "Demo Book"}</h1>
+          {effectiveContent?.author && (
+            <p className="text-muted-foreground">by {effectiveContent.author}</p>
           )}
         </div>
 
@@ -347,7 +417,7 @@ export default function Reader() {
               size="sm"
               className="flex-1"
               onClick={handleNextChapter}
-              disabled={currentChapter >= 5}
+              disabled={currentChapter >= (demoMode ? (demoContentMeta?.totalChapters ?? 5) : 5)}
             >
               Next Chapter →
             </Button>
@@ -387,4 +457,66 @@ function debounce<T extends (...args: any[]) => any>(fn: T, delay: number) {
   };
 
   return debounced as ((...args: Parameters<T>) => void) & { cancel: () => void };
+}
+
+function transformDemoVariants(data: any) {
+  const chapters: Record<number, { paragraphs: Array<{ levels: Record<number, string> }> }> = {};
+  const wordSequences: Record<string, WordSequenceEntry[]> = {};
+
+  const chapterMap = new Map<number, Map<number, { levels: Record<number, string> }>>();
+
+  data.variants.forEach((variant: any) => {
+    if (!chapterMap.has(variant.chapterNumber)) {
+      chapterMap.set(variant.chapterNumber, new Map());
+    }
+    const paragraphMap = chapterMap.get(variant.chapterNumber)!;
+    if (!paragraphMap.has(variant.paragraphIndex)) {
+      paragraphMap.set(variant.paragraphIndex, { levels: {} });
+    }
+    const paragraph = paragraphMap.get(variant.paragraphIndex)!;
+    paragraph.levels[variant.level] = variant.text;
+  });
+
+  chapterMap.forEach((paragraphMap, chapterNumber) => {
+    const paragraphs = Array.from(paragraphMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([paragraphIndex, data]) => {
+        const levels = {
+          1: data.levels[1] ?? data.levels[4] ?? "",
+          2: data.levels[2] ?? data.levels[4] ?? "",
+          3: data.levels[3] ?? data.levels[4] ?? "",
+          4: data.levels[4] ?? "",
+        };
+
+        const key = `${chapterNumber}-${paragraphIndex}`;
+        wordSequences[key] = buildWordSequenceFromLevels(levels);
+
+        return { levels };
+      });
+
+    chapters[chapterNumber] = { paragraphs };
+  });
+
+  return { chapters, wordSequences };
+}
+
+function buildWordSequenceFromLevels(levels: Record<number, string>): WordSequenceEntry[] {
+  const tokens = [1, 2, 3, 4].map((level) =>
+    levels[level] ? levels[level].split(/\s+/).filter(Boolean) : []
+  );
+  const maxLen = Math.max(...tokens.map((arr) => arr.length));
+
+  const sequence: WordSequenceEntry[] = [];
+
+  for (let i = 0; i < maxLen; i++) {
+    sequence.push({
+      word: tokens[3][i] ?? tokens[2][i] ?? tokens[1][i] ?? tokens[0][i] ?? "",
+      level1: tokens[0][i] ?? tokens[3][i] ?? "",
+      level2: tokens[1][i] ?? tokens[3][i] ?? "",
+      level3: tokens[2][i] ?? tokens[3][i] ?? "",
+      level4: tokens[3][i] ?? "",
+    });
+  }
+
+  return sequence.filter((entry) => entry.word.length > 0);
 }
