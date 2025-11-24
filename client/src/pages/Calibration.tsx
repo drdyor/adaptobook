@@ -67,6 +67,8 @@ export default function Calibration() {
     import.meta.env.VITE_ENABLE_AUTH === "false" ||
     !import.meta.env.VITE_ENABLE_AUTH;
 
+  console.log('[Calibration] demoMode:', demoMode, 'isAuthenticated:', isAuthenticated, 'step:', step);
+
   const { data: passageData } = trpc.calibration.getPassage.useQuery(undefined, {
     enabled: !demoMode && step === 'intro'
   });
@@ -79,7 +81,9 @@ export default function Calibration() {
   });
 
   useEffect(() => {
+    console.log('[Calibration useEffect] isAuthenticated:', isAuthenticated, 'demoMode:', demoMode);
     if (!isAuthenticated && !demoMode) {
+      console.log('[Calibration] Redirecting to login...');
       window.location.href = getLoginUrl();
     }
   }, [isAuthenticated, demoMode]);
