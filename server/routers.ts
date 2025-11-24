@@ -267,7 +267,7 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         // Rate limiting: 10 PDF uploads per IP per day
-        const clientIP = getClientIP(ctx.req.headers as Record<string, string | string[] | undefined>);
+        const clientIP = getClientIP({ headers: ctx.req.headers as Record<string, string | string[] | undefined> });
         const rateLimitKey = `pdf_upload:${clientIP}`;
         const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1000); // 24 hours
         
@@ -324,7 +324,7 @@ export const appRouter = router({
           cefrLevel,
         });
         
-        const contentId = (contentResult as any).insertId;
+        const contentId = contentResult.id;
         
         // Store paragraphs as level 4 (original) variants
         // PDFs are treated as single "chapter" with paragraphs
@@ -361,7 +361,7 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         // Rate limiting: 50 paragraph adaptations per IP per day
-        const clientIP = getClientIP(ctx.req.headers as Record<string, string | string[] | undefined>);
+        const clientIP = getClientIP({ headers: ctx.req.headers as Record<string, string | string[] | undefined> });
         const rateLimitKey = `adapt_paragraph:${clientIP}`;
         const allowed = checkRateLimit(rateLimitKey, 50, 24 * 60 * 60 * 1000); // 24 hours
         
@@ -424,7 +424,7 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         // Rate limiting: 10 uploads per IP per day
-        const clientIP = getClientIP(ctx.req.headers as Record<string, string | string[] | undefined>);
+        const clientIP = getClientIP({ headers: ctx.req.headers as Record<string, string | string[] | undefined> });
         const rateLimitKey = `text_upload:${clientIP}`;
         const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1000); // 24 hours
         
@@ -462,7 +462,7 @@ export const appRouter = router({
           cefrLevel,
         });
         
-        const contentId = (contentResult as any).insertId;
+        const contentId = contentResult.id;
         
         // Store paragraphs as level 4 (original) variants
         // Text files are treated as single "chapter" with paragraphs
@@ -503,7 +503,7 @@ export const appRouter = router({
           status: 'active'
         });
         
-        return { sessionId: (result as any).insertId };
+        return { sessionId: result.id };
       }),
     
     getActiveSession: protectedProcedure.query(async ({ ctx }) => {
@@ -530,7 +530,7 @@ export const appRouter = router({
           difficultyLevel: input.difficultyLevel,
           comprehensionScore: input.comprehensionScore,
           timeSpent: input.timeSpent,
-          manualAdjustment: input.manualAdjustment ? 1 : 0
+          manualAdjustment: input.manualAdjustment || false
         });
         
         // Update session's current position

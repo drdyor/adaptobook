@@ -1,5 +1,7 @@
 import { eq, and } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { sql } from "drizzle-orm";
 import { 
   InsertUser, 
   users,
@@ -26,7 +28,10 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const pool = new pg.Pool({
+        connectionString: process.env.DATABASE_URL,
+      });
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -85,7 +90,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -162,16 +168,16 @@ export async function getContentById(id: number) {
 export async function createContent(content: InsertContentLibrary) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(contentLibrary).values(content);
-  return result;
+  const result = await db.insert(contentLibrary).values(content).returning({ id: contentLibrary.id });
+  return result[0];
 }
 
 // Reading Session queries
 export async function createReadingSession(session: InsertReadingSession) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(readingSessions).values(session);
-  return result;
+  const result = await db.insert(readingSessions).values(session).returning({ id: readingSessions.id });
+  return result[0];
 }
 
 export async function getActiveSessionByUserId(userId: number) {
@@ -210,7 +216,8 @@ export async function getSessionProgress(sessionId: number) {
 export async function saveWordLevelSequence(entry: InsertWordLevel) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(wordLevel).values(entry).onDuplicateKeyUpdate({
+  await db.insert(wordLevel).values(entry).onConflictDoUpdate({
+    target: [wordLevel.contentId, wordLevel.paragraphIndex],
     set: {
       wordSequence: entry.wordSequence,
       createdAt: new Date(),
