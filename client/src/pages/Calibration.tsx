@@ -10,6 +10,41 @@ import { BookOpen, CheckCircle2, Clock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
+const DEMO_PASSAGE = {
+  text: "Adaptive reading keeps you in flow by matching text difficulty to your skill. When passages are too easy you lose focus; when too hard you feel overwhelmed. The sweet spot—called the Goldilocks zone—creates the perfect blend of challenge and confidence. Our engine senses this zone paragraph by paragraph, making sure the next section always feels achievable yet stimulating.",
+  fleschKincaid: 6,
+  questions: [
+    {
+      question: "What happens when reading is too easy?",
+      options: [
+        "You lose focus and drift",
+        "You feel overwhelmed",
+        "You learn faster",
+        "You read more carefully"
+      ],
+      correctAnswer: 0
+    },
+    {
+      question: "What is the Goldilocks zone?",
+      options: [
+        "A place to study",
+        "A perfect challenge level",
+        "A grading scale",
+        "A reading technique"
+      ],
+      correctAnswer: 1
+    }
+  ]
+};
+
+const DEMO_RESULTS = {
+  level: 3,
+  readingSpeed: 220,
+  comprehensionAccuracy: 85,
+  strengths: ["focus", "pacing"],
+  challenges: ["advanced vocabulary"]
+};
+
 export default function Calibration() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
@@ -21,8 +56,12 @@ export default function Calibration() {
   const [answers, setAnswers] = useState<number[]>([]);
   const [results, setResults] = useState<any>(null);
 
+  const demoMode =
+    import.meta.env.VITE_ENABLE_AUTH === "false" ||
+    !import.meta.env.VITE_ENABLE_AUTH;
+
   const { data: passageData } = trpc.calibration.getPassage.useQuery(undefined, {
-    enabled: step === 'intro'
+    enabled: !demoMode && step === 'intro'
   });
 
   const submitTest = trpc.calibration.submitTest.useMutation({
@@ -33,10 +72,10 @@ export default function Calibration() {
   });
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !demoMode) {
       window.location.href = getLoginUrl();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, demoMode]);
 
   useEffect(() => {
     if (passageData) {
@@ -44,6 +83,13 @@ export default function Calibration() {
       setAnswers(new Array(passageData.questions.length).fill(-1));
     }
   }, [passageData]);
+
+  useEffect(() => {
+    if (demoMode && step === 'intro') {
+      setPassage(DEMO_PASSAGE);
+      setAnswers(new Array(DEMO_PASSAGE.questions.length).fill(-1));
+    }
+  }, [demoMode, step]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -75,7 +121,19 @@ export default function Calibration() {
 
   const handleSubmit = () => {
     if (!passage) return;
-    
+
+    if (demoMode) {
+      setResults({
+        ...DEMO_RESULTS,
+        readingSpeed: Math.max(
+          150,
+          Math.round((passage.text.split(/\s+/).length / Math.max(readingTime || 1, 1)) * 60)
+        ),
+      });
+      setStep('results');
+      return;
+    }
+
     submitTest.mutate({
       passageText: passage.text,
       passageDifficulty: passage.fleschKincaid,
@@ -86,7 +144,7 @@ export default function Calibration() {
 
   const allAnswered = answers.every(a => a !== -1);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !demoMode) {
     return null;
   }
 
