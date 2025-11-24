@@ -9,7 +9,7 @@ import { trpc } from "@/lib/trpc";
 import MindReaderSlider from "@/components/MindReaderSlider";
 import { useWordLevelMorph, getTypographyVars, triggerHaptic, WordSequenceEntry } from "@/hooks/useWordLevelMorph";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState, useRef, useCallback, CSSProperties } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, CSSProperties } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -95,12 +95,19 @@ export default function Reader() {
   }, [chapter]);
 
   // Debounced save of microLevel
-  const debouncedSaveMicroLevel = useCallback(
-    debounce((level: number) => {
-      saveMicroLevel.mutate({ microLevel: level });
-    }, 500),
-    []
+  const debouncedSaveMicroLevel = useMemo(
+    () =>
+      debounce((level: number) => {
+        saveMicroLevel.mutate({ microLevel: level });
+      }, 500),
+    [saveMicroLevel]
   );
+
+  useEffect(() => {
+    return () => {
+      debouncedSaveMicroLevel.cancel();
+    };
+  }, [debouncedSaveMicroLevel]);
 
   const handleMicroLevelChange = (value: number) => {
     setMicroLevel(value);
@@ -364,9 +371,20 @@ export default function Reader() {
 
 // Debounce utility
 function debounce<T extends (...args: any[]) => any>(fn: T, delay: number) {
-  let timeoutId: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
+  let timeoutId: NodeJS.Timeout | null = null;
+  const debounced = (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
     timeoutId = setTimeout(() => fn(...args), delay);
   };
+
+  debounced.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  return debounced as ((...args: Parameters<T>) => void) & { cancel: () => void };
 }

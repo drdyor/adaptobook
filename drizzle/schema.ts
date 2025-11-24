@@ -1,4 +1,4 @@
-import { double, index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { double, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -195,6 +195,10 @@ export const wordLevel = mysqlTable("wordLevel", {
   createdAt: timestamp("createdAt").defaultNow(),
 }, table => ({
   contentParagraphIdx: index("idx_wordLevel_content_paragraph").on(
+    table.contentId,
+    table.paragraphIndex
+  ),
+  contentParagraphUnique: uniqueIndex("uq_wordLevel_content_paragraph").on(
     table.contentId,
     table.paragraphIndex
   ),
