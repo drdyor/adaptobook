@@ -9,6 +9,27 @@ type UseAuthOptions = {
 };
 
 export function useAuth(options?: UseAuthOptions) {
+  const authDisabled =
+    import.meta.env.VITE_ENABLE_AUTH === "false" ||
+    !import.meta.env.VITE_ENABLE_AUTH;
+
+  if (authDisabled) {
+    const demoUser = {
+      id: "demo-user",
+      name: "Demo Reader",
+      email: "demo@adaptive-reader.local",
+    };
+
+    return {
+      user: demoUser,
+      loading: false,
+      error: null,
+      isAuthenticated: true,
+      refresh: async () => demoUser,
+      logout: async () => {},
+    };
+  }
+
   const { redirectOnUnauthenticated = false, redirectPath = getLoginUrl() } =
     options ?? {};
   const utils = trpc.useUtils();
