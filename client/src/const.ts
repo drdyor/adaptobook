@@ -11,6 +11,13 @@ export const getLoginUrl = () => {
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
   const state = btoa(redirectUri);
 
+  if (!oauthPortalUrl || !appId) {
+    console.warn(
+      "[auth] Missing VITE_OAUTH_PORTAL_URL or VITE_APP_ID. Falling back to local origin."
+    );
+    return window.location.origin;
+  }
+
   const url = new URL(`${oauthPortalUrl}/app-auth`);
   url.searchParams.set("appId", appId);
   url.searchParams.set("redirectUri", redirectUri);
