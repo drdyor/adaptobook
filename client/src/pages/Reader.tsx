@@ -84,10 +84,10 @@ export default function Reader() {
   const typographyVars = getTypographyVars(microLevel);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !demoMode) {
       window.location.href = getLoginUrl();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, demoMode]);
 
   const demoProfile = useMemo(() => {
     if (!demoMode || typeof window === "undefined") return null;
