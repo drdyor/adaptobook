@@ -20,6 +20,7 @@ import {
   getAllVariantsForContent
 } from './db';
 import { adaptTextToLevel } from './adaptation';
+import { adaptWordLevelRouter } from "./adaptWordLevelRouter";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -98,6 +99,7 @@ export const appRouter = router({
         const profileData = {
           userId: ctx.user.id,
           level: assessedLevel,
+          microLevel: existingProfile?.microLevel ?? 2,
           readingSpeed,
           comprehensionAccuracy,
           strengths: JSON.stringify(strengths),
@@ -133,7 +135,18 @@ export const appRouter = router({
         strengths: profile.strengths ? JSON.parse(profile.strengths) : [],
         challenges: profile.challenges ? JSON.parse(profile.challenges) : []
       };
-    })
+    }),
+
+    updateMicroLevel: protectedProcedure
+      .input((val: unknown) => {
+        const input = val as { microLevel: number };
+        return input;
+      })
+      .mutation(async ({ ctx, input }) => {
+        const clamped = Math.min(4, Math.max(1, input.microLevel));
+        await updateReadingProfile(ctx.user.id, { microLevel: clamped });
+        return { microLevel: clamped };
+      })
   }),
   
   content: router({
@@ -302,6 +315,7 @@ export const appRouter = router({
         return await getSessionProgress(input.sessionId);
       })
   }),
+  wordLevel: adaptWordLevelRouter,
 });
 
 export type AppRouter = typeof appRouter;

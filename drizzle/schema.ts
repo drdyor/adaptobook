@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { double, index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -33,6 +33,8 @@ export const readingProfiles = mysqlTable("readingProfiles", {
   userId: int("userId").notNull().references(() => users.id),
   /** Reading level from 1 (beginner) to 7 (advanced) */
   level: int("level").notNull(),
+  /** Fine-grained preference captured by the Mind-Reader slider (1.0 - 4.0) */
+  microLevel: double("microLevel").default(2).notNull(),
   /** Reading speed in words per minute */
   readingSpeed: int("readingSpeed"),
   /** Comprehension accuracy percentage (0-100) */
@@ -168,3 +170,35 @@ export const paragraphVariants = mysqlTable("paragraphVariants", {
 
 export type ParagraphVariant = typeof paragraphVariants.$inferSelect;
 export type InsertParagraphVariant = typeof paragraphVariants.$inferInsert;
+
+/**
+ * Word sequence entry type for Mind-Reader Slider
+ */
+export type WordSequenceEntry = {
+  word: string;
+  level1: string;
+  level2: string;
+  level3: string;
+  level4: string;
+};
+
+/**
+ * Word-level variants for Mind-Reader Slider feature
+ * Stores word sequences with 4 difficulty levels for smooth morphing
+ */
+export const wordLevel = mysqlTable("wordLevel", {
+  id: int("id").autoincrement().primaryKey(),
+  contentId: int("contentId").notNull().references(() => contentLibrary.id),
+  paragraphIndex: int("paragraphIndex").notNull(),
+  /** JSON array of word objects with level1-4 variants */
+  wordSequence: json("wordSequence").$type<WordSequenceEntry[]>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow(),
+}, table => ({
+  contentParagraphIdx: index("idx_wordLevel_content_paragraph").on(
+    table.contentId,
+    table.paragraphIndex
+  ),
+}));
+
+export type WordLevel = typeof wordLevel.$inferSelect;
+export type InsertWordLevel = typeof wordLevel.$inferInsert;

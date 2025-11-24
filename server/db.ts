@@ -14,7 +14,9 @@ import {
   progressTracking,
   InsertProgressTracking,
   paragraphVariants,
-  InsertParagraphVariant
+  InsertParagraphVariant,
+  wordLevel,
+  InsertWordLevel
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -202,6 +204,45 @@ export async function getSessionProgress(sessionId: number) {
   return await db.select().from(progressTracking)
     .where(eq(progressTracking.sessionId, sessionId))
     .orderBy(progressTracking.paragraphIndex);
+}
+
+// Word level morphing
+export async function saveWordLevelSequence(entry: InsertWordLevel) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(wordLevel).values(entry).onDuplicateKeyUpdate({
+    set: {
+      wordSequence: entry.wordSequence,
+      createdAt: new Date(),
+    },
+  });
+}
+
+export async function getWordLevelSequence(
+  contentId: number,
+  paragraphIndex: number
+) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(wordLevel)
+    .where(
+      and(
+        eq(wordLevel.contentId, contentId),
+        eq(wordLevel.paragraphIndex, paragraphIndex)
+      )
+    )
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function updateMicroLevel(userId: number, microLevel: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(readingProfiles)
+    .set({ microLevel })
+    .where(eq(readingProfiles.userId, userId));
 }
 
 // Paragraph Variants queries

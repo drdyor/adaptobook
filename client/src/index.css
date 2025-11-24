@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,200..900&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -174,4 +175,20 @@
       max-width: 1280px; /* Standard content width */
     }
   }
+}
+
+.physical-text {
+  font-family: "Roboto Flex", ui-sans-serif, system-ui;
+  font-variation-settings:
+    "wght" var(--wght, 400),
+    "GRAD" var(--grade, 0),
+    "opsz" var(--opsz, 14);
+  letter-spacing: var(--ls, 0);
+  line-height: var(--lh, 1.6);
+  transition:
+    font-variation-settings 150ms ease,
+    letter-spacing 150ms ease,
+    line-height 150ms ease,
+    filter 150ms ease,
+    color 150ms ease;
 }
