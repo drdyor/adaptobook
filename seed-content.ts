@@ -1,5 +1,7 @@
 import { drizzle } from 'drizzle-orm/mysql2';
-import { contentLibrary } from './drizzle/schema';
+import { contentLibrary, paragraphVariants } from './drizzle/schema';
+import fs from 'fs';
+import path from 'path';
 
 const db = drizzle(process.env.DATABASE_URL!);
 
@@ -35,15 +37,86 @@ Scientists have documented melting ice caps, rising sea levels, and increasingly
   }
 ];
 
+interface ParagraphVariantData {
+  chapterNumber: number;
+  paragraphIndex: number;
+  level: number;
+  text: string;
+  originalText: string;
+}
+
+interface VariantsFile {
+  title: string;
+  author: string;
+  totalChapters: number;
+  totalParagraphs: number;
+  levels: number;
+  variants: ParagraphVariantData[];
+}
+
 async function seed() {
-  console.log('Seeding content library...');
+  console.log('🌱 Seeding content library...\n');
   
+  // Seed sample content
   for (const content of sampleContent) {
-    await db.insert(contentLibrary).values(content);
-    console.log(`Added: ${content.title}`);
+    const result = await db.insert(contentLibrary).values(content);
+    console.log(`✅ Added: ${content.title}`);
   }
   
-  console.log('Seeding complete!');
+  // Seed The Prince with pre-generated variants
+  console.log('\n📖 Loading The Prince variants...');
+  
+  const variantsPath = path.join(process.cwd(), 'content', 'the-prince-variants.json');
+  
+  if (!fs.existsSync(variantsPath)) {
+    console.warn('⚠️  Warning: the-prince-variants.json not found. Skipping Prince content.');
+    console.log('\n✅ Seeding complete!');
+    process.exit(0);
+    return;
+  }
+  
+  const variantsData: VariantsFile = JSON.parse(fs.readFileSync(variantsPath, 'utf-8'));
+  
+  // Insert The Prince into content library
+  const princeContent = {
+    title: variantsData.title,
+    author: variantsData.author,
+    originalText: 'The Prince by Niccolò Machiavelli - A treatise on political power and statecraft.',
+    baseDifficulty: 4,
+    fleschKincaid: 12,
+    wordCount: variantsData.totalParagraphs * 100, // Rough estimate
+    category: 'classic-literature'
+  };
+  
+  const princeResult = await db.insert(contentLibrary).values(princeContent);
+  const princeId = (princeResult as any)[0].insertId;
+  
+  console.log(`✅ Added: ${variantsData.title} (ID: ${princeId})`);
+  console.log(`   - Chapters: ${variantsData.totalChapters}`);
+  console.log(`   - Paragraphs: ${variantsData.totalParagraphs}`);
+  console.log(`   - Levels: ${variantsData.levels}`);
+  console.log(`\n📝 Inserting ${variantsData.variants.length} paragraph variants...`);
+  
+  // Insert all paragraph variants
+  let inserted = 0;
+  for (const variant of variantsData.variants) {
+    await db.insert(paragraphVariants).values({
+      contentId: princeId,
+      chapterNumber: variant.chapterNumber,
+      paragraphIndex: variant.paragraphIndex,
+      level: variant.level,
+      text: variant.text,
+      originalText: variant.originalText || null
+    });
+    
+    inserted++;
+    if (inserted % 20 === 0) {
+      process.stdout.write(`   Progress: ${inserted}/${variantsData.variants.length}...\r`);
+    }
+  }
+  
+  console.log(`\n✅ Inserted all ${inserted} paragraph variants`);
+  console.log('\n✅ Seeding complete!');
   process.exit(0);
 }
 

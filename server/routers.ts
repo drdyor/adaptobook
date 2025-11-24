@@ -14,7 +14,10 @@ import {
   getActiveSessionByUserId,
   updateReadingSession,
   createProgressTracking,
-  getSessionProgress
+  getSessionProgress,
+  getParagraphVariant,
+  getChapterVariants,
+  getAllVariantsForContent
 } from './db';
 import { adaptTextToLevel } from './adaptation';
 
@@ -147,6 +150,77 @@ export const appRouter = router({
         return await getContentById(input.id);
       }),
     
+    // Get a single paragraph variant at a specific difficulty level
+    getParagraphVariant: publicProcedure
+      .input((val: unknown) => {
+        const input = val as { 
+          contentId: number; 
+          chapterNumber: number; 
+          paragraphIndex: number; 
+          level: number;
+        };
+        return input;
+      })
+      .query(async ({ input }) => {
+        const variant = await getParagraphVariant(
+          input.contentId,
+          input.chapterNumber,
+          input.paragraphIndex,
+          input.level
+        );
+        
+        if (!variant) {
+          throw new Error('Paragraph variant not found');
+        }
+        
+        return variant;
+      }),
+    
+    // Get all paragraph variants for a chapter (all levels)
+    getChapter: publicProcedure
+      .input((val: unknown) => {
+        const input = val as { 
+          contentId: number; 
+          chapterNumber: number;
+        };
+        return input;
+      })
+      .query(async ({ input }) => {
+        const variants = await getChapterVariants(
+          input.contentId,
+          input.chapterNumber
+        );
+        
+        // Group variants by paragraph index
+        const paragraphGroups: Record<number, any> = {};
+        
+        for (const variant of variants) {
+          if (!paragraphGroups[variant.paragraphIndex]) {
+            paragraphGroups[variant.paragraphIndex] = {
+              paragraphIndex: variant.paragraphIndex,
+              levels: {}
+            };
+          }
+          paragraphGroups[variant.paragraphIndex].levels[variant.level] = variant.text;
+        }
+        
+        return {
+          chapterNumber: input.chapterNumber,
+          paragraphs: Object.values(paragraphGroups)
+        };
+      }),
+    
+    // Get all variants for entire content (useful for preloading)
+    getAllVariants: publicProcedure
+      .input((val: unknown) => {
+        const input = val as { contentId: number };
+        return input;
+      })
+      .query(async ({ input }) => {
+        return await getAllVariantsForContent(input.contentId);
+      }),
+    
+    // Legacy adapt endpoint - kept for backwards compatibility but deprecated
     adapt: protectedProcedure
       .input((val: unknown) => {
         const input = val as { contentId: number; targetLevel: number };

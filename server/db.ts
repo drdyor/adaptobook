@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, 
@@ -12,7 +12,9 @@ import {
   readingSessions,
   InsertReadingSession,
   progressTracking,
-  InsertProgressTracking
+  InsertProgressTracking,
+  paragraphVariants,
+  InsertParagraphVariant
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -200,4 +202,53 @@ export async function getSessionProgress(sessionId: number) {
   return await db.select().from(progressTracking)
     .where(eq(progressTracking.sessionId, sessionId))
     .orderBy(progressTracking.paragraphIndex);
+}
+
+// Paragraph Variants queries
+export async function createParagraphVariant(variant: InsertParagraphVariant) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(paragraphVariants).values(variant);
+  return result;
+}
+
+export async function getParagraphVariant(
+  contentId: number,
+  chapterNumber: number,
+  paragraphIndex: number,
+  level: number
+) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(paragraphVariants)
+    .where(and(
+      eq(paragraphVariants.contentId, contentId),
+      eq(paragraphVariants.chapterNumber, chapterNumber),
+      eq(paragraphVariants.paragraphIndex, paragraphIndex),
+      eq(paragraphVariants.level, level)
+    ))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getChapterVariants(
+  contentId: number,
+  chapterNumber: number
+) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(paragraphVariants)
+    .where(and(
+      eq(paragraphVariants.contentId, contentId),
+      eq(paragraphVariants.chapterNumber, chapterNumber)
+    ))
+    .orderBy(paragraphVariants.paragraphIndex);
+}
+
+export async function getAllVariantsForContent(contentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(paragraphVariants)
+    .where(eq(paragraphVariants.contentId, contentId))
+    .orderBy(paragraphVariants.chapterNumber, paragraphVariants.paragraphIndex);
 }

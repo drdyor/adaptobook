@@ -1,0 +1,8 @@
+node_modules
+
+# Sample books folder (PDFs not committed to repo)
+sample books/
+
+# Intermediate extraction files (optional - keep for reference)
+content/the-prince-extracted.json
+content/the-prince-cleaned.json

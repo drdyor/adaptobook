@@ -144,3 +144,27 @@ export const calibrationTests = mysqlTable("calibrationTests", {
 
 export type CalibrationTest = typeof calibrationTests.$inferSelect;
 export type InsertCalibrationTest = typeof calibrationTests.$inferInsert;
+
+/**
+ * Paragraph variants store pre-generated text at different difficulty levels
+ * This enables instant level switching without real-time LLM calls
+ */
+export const paragraphVariants = mysqlTable("paragraphVariants", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Reference to the content/book this paragraph belongs to */
+  contentId: int("contentId").notNull().references(() => contentLibrary.id),
+  /** Chapter number (e.g., 1-5 for first 5 chapters) */
+  chapterNumber: int("chapterNumber").notNull(),
+  /** Paragraph index within the chapter (0-based) */
+  paragraphIndex: int("paragraphIndex").notNull(),
+  /** Difficulty level (1-4 for Elementary to Middle School) */
+  level: int("level").notNull(),
+  /** Pre-generated paragraph text at this difficulty level */
+  text: text("text").notNull(),
+  /** Original paragraph text (level 4 baseline) */
+  originalText: text("originalText"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ParagraphVariant = typeof paragraphVariants.$inferSelect;
+export type InsertParagraphVariant = typeof paragraphVariants.$inferInsert;
