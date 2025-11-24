@@ -89,7 +89,7 @@ async function seed() {
   };
   
   const princeResult = await db.insert(contentLibrary).values(princeContent);
-  const princeId = (princeResult as any)[0].insertId;
+  const princeId = (princeResult as any).insertId;
   
   console.log(`✅ Added: ${variantsData.title} (ID: ${princeId})`);
   console.log(`   - Chapters: ${variantsData.totalChapters}`);

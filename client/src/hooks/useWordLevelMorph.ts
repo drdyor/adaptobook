@@ -27,8 +27,9 @@ export function useWordLevelMorph(
       return "";
     }
 
-    // Snap to nearest integer level (1, 2, 3, or 4)
-    const cacheLevel = Math.round(microLevel) as 1 | 2 | 3 | 4;
+    // Clamp to valid bounds before snapping to nearest integer level
+    const clampedLevel = Math.min(4, Math.max(1, microLevel));
+    const cacheLevel = Math.round(clampedLevel) as 1 | 2 | 3 | 4;
     const levelKey = `level${cacheLevel}` as keyof WordSequenceEntry;
 
     return wordSequence
@@ -42,7 +43,8 @@ export function useWordLevelMorph(
  */
 export function getTypographyVars(microLevel: number) {
   // Map microLevel (1-4) to typography values
-  const t = (microLevel - 1) / 3; // normalize to 0-1
+  const clampedLevel = Math.min(4, Math.max(1, microLevel));
+  const t = (clampedLevel - 1) / 3; // normalize to 0-1
 
   return {
     "--wght": Math.round(200 + t * 700), // 200 → 900
