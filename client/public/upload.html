@@ -222,12 +222,10 @@
                 },
                 credentials: 'include',
                 body: JSON.stringify({
-                    0: {
-                        json: {
-                            title: titleInput.value.trim(),
-                            author: document.getElementById('author').value.trim() || undefined,
-                            textContent: textContent.trim()
-                        }
+                    input: {
+                        title: titleInput.value.trim(),
+                        author: document.getElementById('author').value.trim() || undefined,
+                        textContent: textContent.trim()
                     }
                 })
             });
@@ -237,7 +235,7 @@
                 let errorMessage = 'Upload failed';
                 try {
                     const error = JSON.parse(errorText);
-                    errorMessage = error[0]?.error?.json?.message || error.error?.message || 'Upload failed';
+                    errorMessage = error.error?.json?.message || error.error?.message || 'Upload failed';
                 } catch (e) {
                     errorMessage = errorText || 'Upload failed';
                 }
@@ -245,7 +243,7 @@
             }
 
             const data = await response.json();
-            const result = data[0]?.result?.data || data.result?.data;
+            const result = data.result?.data;
             showStatus(`Success! ${result.paragraphCount} paragraphs extracted.`, 'success');
 
             // Redirect to reader after 2 seconds
@@ -262,12 +260,10 @@
                 },
                 credentials: 'include',
                 body: JSON.stringify({
-                    0: {
-                        json: {
-                            title: titleInput.value.trim(),
-                            author: document.getElementById('author').value.trim() || undefined,
-                            pdfData: base64Data
-                        }
+                    input: {
+                        title: titleInput.value.trim(),
+                        author: document.getElementById('author').value.trim() || undefined,
+                        pdfData: base64Data
                     }
                 })
             });
@@ -277,7 +273,7 @@
                 let errorMessage = 'Upload failed';
                 try {
                     const error = JSON.parse(errorText);
-                    errorMessage = error[0]?.error?.json?.message || error.error?.message || 'Upload failed';
+                    errorMessage = error.error?.json?.message || error.error?.message || 'Upload failed';
                 } catch (e) {
                     errorMessage = errorText || 'Upload failed';
                 }
@@ -285,7 +281,7 @@
             }
 
             const data = await response.json();
-            const result = data[0]?.result?.data || data.result?.data;
+            const result = data.result?.data;
             showStatus(`Success! ${result.paragraphCount} paragraphs extracted.`, 'success');
 
             // Redirect to reader after 2 seconds
