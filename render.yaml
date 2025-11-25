@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: adaptobook-backend
+    runtime: node
+    plan: free
+    buildCommand: pnpm install && pnpm build
+    startCommand: node dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: adaptobook-db
+          property: connectionString
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: VITE_APP_TITLE
+        value: AdaptoBook
+      - key: VITE_APP_LOGO
+        value: /logo.png
+      - key: VITE_ENABLE_AUTH
+        value: "false"
+      - key: OPENROUTER_REFERER_URL
+        value: https://adaptobook.com
+
+databases:
+  - name: adaptobook-db
+    databaseName: adaptobook
+    user: postgres
+    plan: free

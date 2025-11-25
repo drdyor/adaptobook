@@ -1,0 +1,28 @@
+{
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "env": {
+    "VITE_API_URL": "@vite_api_url",
+    "VITE_APP_TITLE": "@vite_app_title",
+    "VITE_APP_LOGO": "@vite_app_logo",
+    "VITE_ENABLE_AUTH": "@vite_enable_auth"
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/trpc/(.*)",
+      "destination": "${VITE_API_URL}/api/trpc/$1"
+    }
+  ]
+}
