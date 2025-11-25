@@ -4,7 +4,7 @@ Your `.env` file is missing several required variables. Here's what you need to 
 
 ## Current .env Content (from terminal):
 ```
-OPENROUTER_API_KEY=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
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 ```
 
 ## Complete .env Template:
@@ -22,7 +22,7 @@ DATABASE_URL=postgresql://postgres:your-password@db.your-project-ref.supabase.co
 # ============================================
 # AI API KEY (ALREADY SET)
 # ============================================
-OPENROUTER_API_KEY=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
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 
 # ============================================
 # OAUTH (OPTIONAL - Can leave empty for local dev)
@@ -70,7 +70,7 @@ cat > .env << 'EOF'
 DATABASE_URL=postgresql://postgres:your-password@db.your-project-ref.supabase.co:5432/postgres
 
 # OpenRouter API Key
-OPENROUTER_API_KEY=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
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 
 # OAuth (optional for local dev)
 OAUTH_SERVER_URL=
