@@ -201,18 +201,17 @@ export default function Upload() {
                     <p className="font-medium mb-1">Drag and drop your file here</p>
                     <p className="text-sm text-muted-foreground">or</p>
                   </div>
-                  <label htmlFor="file-upload" className="cursor-pointer">
+                  <label>
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,text/plain"
+                      onChange={handleFileInput}
+                      className="hidden"
+                    />
                     <Button variant="outline" asChild>
-                      <span>Browse Files</span>
+                      Browse Files
                     </Button>
                   </label>
-                  <input
-                    id="file-upload"
-                    type="file"
-                    accept=".pdf,.txt,text/plain"
-                    onChange={handleFileInput}
-                    className="hidden"
-                  />
                   <p className="text-xs text-muted-foreground mt-2">
                     PDF (max 10MB) or Text file (max 5MB)
                   </p>
