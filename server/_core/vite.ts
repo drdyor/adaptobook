@@ -7,6 +7,9 @@ import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 
 export async function setupVite(app: Express, server: Server) {
+  const projectRoot = path.resolve(import.meta.dirname, "../..");
+  const clientRoot = path.resolve(projectRoot, "client");
+
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -16,6 +19,14 @@ export async function setupVite(app: Express, server: Server) {
   const vite = await createViteServer({
     ...viteConfig,
     configFile: false,
+    root: clientRoot,
+    resolve: {
+      alias: {
+        "@": path.resolve(clientRoot, "src"),
+        "@shared": path.resolve(projectRoot, "shared"),
+        "@assets": path.resolve(projectRoot, "attached_assets"),
+      },
+    },
     server: serverOptions,
     appType: "custom",
   });
@@ -34,10 +45,6 @@ export async function setupVite(app: Express, server: Server) {
 
       // always reload the index.html file from disk incase it changes
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
@@ -52,7 +59,7 @@ export function serveStatic(app: Express) {
   // So we need: dist/ -> .. -> project root -> dist/public
   // But actually, when bundled, the path might be different. Let's use a more reliable approach.
   const distPath = path.resolve(process.cwd(), "dist", "public");
-  
+
   if (!fs.existsSync(distPath)) {
     console.error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
