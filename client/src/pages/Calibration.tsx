@@ -53,7 +53,7 @@ const demoProfile = {
 };
 
 export default function Calibration() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<'intro' | 'reading' | 'questions' | 'results'>('intro');
   const [passage, setPassage] = useState<any>(null);
@@ -67,7 +67,7 @@ export default function Calibration() {
     import.meta.env.VITE_ENABLE_AUTH === "false" ||
     !import.meta.env.VITE_ENABLE_AUTH;
 
-  console.log('[Calibration] demoMode:', demoMode, 'isAuthenticated:', isAuthenticated, 'step:', step);
+  console.log('[Calibration] demoMode:', demoMode, 'isAuthenticated:', isAuthenticated, 'loading:', loading, 'step:', step);
 
   const { data: passageData } = trpc.calibration.getPassage.useQuery(undefined, {
     enabled: !demoMode && step === 'intro'
@@ -81,12 +81,25 @@ export default function Calibration() {
   });
 
   useEffect(() => {
-    console.log('[Calibration useEffect] isAuthenticated:', isAuthenticated, 'demoMode:', demoMode);
-    if (!isAuthenticated && !demoMode) {
-      console.log('[Calibration] Redirecting to login...');
-      window.location.href = getLoginUrl();
+    // Don't redirect if still loading or if in demo mode
+    if (loading || demoMode) {
+      return;
     }
-  }, [isAuthenticated, demoMode]);
+    
+    // Only redirect if auth is required and user is not authenticated
+    if (!isAuthenticated) {
+      console.log('[Calibration] Redirecting to login...');
+      const loginUrl = getLoginUrl();
+      // If getLoginUrl returns homepage (OAuth not configured), don't redirect
+      if (loginUrl !== window.location.origin) {
+        window.location.href = loginUrl;
+      } else {
+        // OAuth not configured, but auth is enabled - this shouldn't happen
+        // Fall back to demo mode behavior
+        console.warn('[Calibration] OAuth not configured but auth enabled, allowing access');
+      }
+    }
+  }, [isAuthenticated, demoMode, loading]);
 
   useEffect(() => {
     if (passageData) {
@@ -164,7 +177,20 @@ export default function Calibration() {
 
   const allAnswered = answers.every(a => a !== -1);
 
-  if (!isAuthenticated && !demoMode) {
+  // Show loading state while checking auth
+  if (loading && !demoMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Only block if auth is required, not loading, and user is not authenticated
+  if (!isAuthenticated && !demoMode && !loading) {
     return null;
   }
 
