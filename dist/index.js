@@ -1188,17 +1188,34 @@ Rewritten paragraph:`;
 // server/_core/pdfExtraction.ts
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 async function extractTextFromPDFBuffer(buffer) {
-  const data = new Uint8Array(buffer);
-  const loadingTask = pdfjsLib.getDocument({ data });
-  const pdf = await loadingTask.promise;
-  let fullText = "";
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items.map((item) => item.str).join(" ");
-    fullText += pageText + "\n";
+  if (!buffer || buffer.length === 0) {
+    throw new Error("PDF buffer is empty or invalid");
   }
-  return fullText;
+  const header = buffer.slice(0, 4).toString("ascii");
+  if (header !== "%PDF") {
+    throw new Error("Invalid PDF file: file does not appear to be a valid PDF");
+  }
+  try {
+    const data = new Uint8Array(buffer);
+    const loadingTask = pdfjsLib.getDocument({ data });
+    const pdf = await loadingTask.promise;
+    if (pdf.numPages === 0) {
+      throw new Error("PDF has no pages");
+    }
+    let fullText = "";
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item) => item.str).join(" ");
+      fullText += pageText + "\n";
+    }
+    return fullText;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`PDF extraction failed: ${error.message}`);
+    }
+    throw new Error(`PDF extraction failed: ${String(error)}`);
+  }
 }
 function splitIntoParagraphs(text2) {
   return text2.split(/\n\s*\n+/).map((p) => p.replace(/\s+/g, " ").trim()).filter((p) => p.length > 50).filter((p) => !p.match(/^\d+$/));
@@ -1252,9 +1269,7 @@ function getStorageConfig() {
   const baseUrl = ENV.forgeApiUrl;
   const apiKey = ENV.forgeApiKey;
   if (!baseUrl || !apiKey) {
-    throw new Error(
-      "Storage proxy credentials missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY"
-    );
+    return null;
   }
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
 }
@@ -1279,7 +1294,13 @@ function buildAuthHeaders(apiKey) {
   return { Authorization: `Bearer ${apiKey}` };
 }
 async function storagePut(relKey, data, contentType = "application/octet-stream") {
-  const { baseUrl, apiKey } = getStorageConfig();
+  const config = getStorageConfig();
+  if (!config) {
+    throw new Error(
+      "Storage proxy credentials missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY"
+    );
+  }
+  const { baseUrl, apiKey } = config;
   const key = normalizeKey(relKey);
   const uploadUrl = buildUploadUrl(baseUrl, key);
   const formData = toFormData(data, contentType, key.split("/").pop() ?? key);
@@ -1621,14 +1642,26 @@ var appRouter = router({
       if (!allowed) {
         throw new Error("Rate limit exceeded: Maximum 10 PDF uploads per day");
       }
-      const pdfBuffer = Buffer.from(input.pdfData, "base64");
+      let pdfBuffer;
+      try {
+        pdfBuffer = Buffer.from(input.pdfData, "base64");
+      } catch (error) {
+        console.error("Failed to decode base64 PDF:", error);
+        throw new Error("Invalid PDF data: failed to decode base64");
+      }
       const sizeMB = pdfBuffer.length / (1024 * 1024);
       if (sizeMB > 10) {
         throw new Error("PDF file exceeds maximum size limit of 10MB");
       }
-      const paragraphs = await extractAndSplitPDF(pdfBuffer);
+      let paragraphs;
+      try {
+        paragraphs = await extractAndSplitPDF(pdfBuffer);
+      } catch (error) {
+        console.error("PDF extraction failed:", error);
+        throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
       if (paragraphs.length === 0) {
-        throw new Error("No text could be extracted from PDF");
+        throw new Error("No text could be extracted from PDF. The PDF might be image-based or corrupted.");
       }
       const sampleText = paragraphs.slice(0, 3).join(" ");
       const cefrLevel = classifyTextCEFRCached(sampleText);
@@ -1659,14 +1692,44 @@ var appRouter = router({
       });
       const contentId = contentResult.id;
       for (let i = 0; i < paragraphs.length; i++) {
+        const originalText = paragraphs[i];
         await createParagraphVariant({
           contentId,
           chapterNumber: 1,
           paragraphIndex: i,
           level: 4,
-          text: paragraphs[i],
-          originalText: paragraphs[i]
+          text: originalText,
+          originalText
         });
+        const levelsToGenerate = [1, 2, 3];
+        for (const targetLevel of levelsToGenerate) {
+          try {
+            const adaptedText = await adaptParagraph(
+              originalText,
+              4,
+              // current level (original)
+              targetLevel
+            );
+            await createParagraphVariant({
+              contentId,
+              chapterNumber: 1,
+              paragraphIndex: i,
+              level: targetLevel,
+              text: adaptedText,
+              originalText
+            });
+          } catch (error) {
+            console.error(`Failed to generate level ${targetLevel} for paragraph ${i}:`, error);
+            await createParagraphVariant({
+              contentId,
+              chapterNumber: 1,
+              paragraphIndex: i,
+              level: targetLevel,
+              text: originalText,
+              originalText
+            });
+          }
+        }
       }
       return {
         contentId,
@@ -1762,14 +1825,44 @@ var appRouter = router({
       });
       const contentId = contentResult.id;
       for (let i = 0; i < paragraphs.length; i++) {
+        const originalText = paragraphs[i];
         await createParagraphVariant({
           contentId,
           chapterNumber: 1,
           paragraphIndex: i,
           level: 4,
-          text: paragraphs[i],
-          originalText: paragraphs[i]
+          text: originalText,
+          originalText
         });
+        const levelsToGenerate = [1, 2, 3];
+        for (const targetLevel of levelsToGenerate) {
+          try {
+            const adaptedText = await adaptParagraph(
+              originalText,
+              4,
+              // current level (original)
+              targetLevel
+            );
+            await createParagraphVariant({
+              contentId,
+              chapterNumber: 1,
+              paragraphIndex: i,
+              level: targetLevel,
+              text: adaptedText,
+              originalText
+            });
+          } catch (error) {
+            console.error(`Failed to generate level ${targetLevel} for paragraph ${i}:`, error);
+            await createParagraphVariant({
+              contentId,
+              chapterNumber: 1,
+              paragraphIndex: i,
+              level: targetLevel,
+              text: originalText,
+              originalText
+            });
+          }
+        }
       }
       return {
         contentId,
@@ -1851,13 +1944,11 @@ import path2 from "path";
 import { createServer as createViteServer } from "vite";
 
 // vite.config.ts
-import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig, loadEnv } from "vite";
-import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
-var plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime()];
+var plugins = [react(), tailwindcss()];
 var vite_config_default = defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
@@ -1881,15 +1972,6 @@ var vite_config_default = defineConfig(({ mode }) => {
     },
     server: {
       host: true,
-      allowedHosts: [
-        ".manuspre.computer",
-        ".manus.computer",
-        ".manus-asia.computer",
-        ".manuscomputer.ai",
-        ".manusvm.computer",
-        "localhost",
-        "127.0.0.1"
-      ],
       fs: {
         strict: true,
         deny: ["**/.*"]
