@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Uploader - AdaptoBook v2</title>
+    <link rel="stylesheet" href="/assets/index.css" />
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+    </style>
+</head>
+
+<body class="p-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-white rounded-2xl shadow-2xl p-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">📚 AdaptoBook PDF Uploader v2</h1>
+            <p class="text-gray-600 mb-8">Upload a PDF or text file - FIXED VERSION</p>
+
+            <!-- File Upload Area -->
+            <div id="dropZone"
+                class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center transition-all hover:border-purple-500 hover:bg-purple-50 cursor-pointer mb-6">
+                <input type="file" id="fileInput" accept=".pdf,.txt" class="hidden">
+                <div id="uploadPrompt">
+                    <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                        </path>
+                    </svg>
+                    <p class="text-lg font-medium text-gray-700 mb-1">Drag & drop your file here</p>
+                    <p class="text-sm text-gray-500">or click to browse</p>
+                    <p class="text-xs text-gray-400 mt-2">PDF (max 10MB) or Text file (max 5MB)</p>
+                </div>
+                <div id="fileInfo" class="hidden">
+                    <svg class="mx-auto h-16 w-16 text-green-500 mb-4" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <p id="fileName" class="font-medium text-gray-800"></p>
+                    <p id="fileSize" class="text-sm text-gray-600"></p>
+                    <button onclick="clearFile()"
+                        class="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                        Change File
+                    </button>
+                </div>
+            </div>
+
+            <!-- Title and Author -->
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                    <input type="text" id="title" placeholder="Enter book title"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition">
+                </div>
+                <div>
+                    <label for="author" class="block text-sm font-medium text-gray-700 mb-1">Author (optional)</label>
+                    <input type="text" id="author" placeholder="Enter author name"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition">
+                </div>
+            </div>
+
+            <!-- Upload Button -->
+            <button id="uploadBtn" onclick="handleUpload()" disabled
+                class="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                <span id="uploadText">Upload and Process</span>
+            </button>
+
+            <!-- Status Message -->
+            <div id="statusMessage" class="mt-6 p-4 rounded-lg hidden"></div>
+
+            <!-- Info Card -->
+            <div class="mt-6 p-4 bg-purple-50 rounded-lg">
+                <p class="text-sm text-gray-700 text-center">
+                    📖 Your file will be processed and made available for reading with adaptive difficulty levels.
+                    <br><span class="text-xs text-gray-600 mt-1 block">💡 Using correct tRPC format with 'input'
+                        field</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        // Setup drag and drop
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const titleInput = document.getElementById('title');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-purple-500', 'bg-purple-50');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-purple-500', 'bg-purple-50');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-purple-500', 'bg-purple-50');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFileSelect(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFileSelect(file);
+        });
+
+        titleInput.addEventListener('input', updateUploadButton);
+
+        function handleFileSelect(file) {
+            const isPDF = file.type === 'application/pdf';
+            const isText = file.type === 'text/plain' || file.name.endsWith('.txt');
+
+            if (!isPDF && !isText) {
+                showStatus('Please select a PDF or text (.txt) file', 'error');
+                return;
+            }
+
+            const maxSize = isPDF ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+            if (file.size > maxSize) {
+                showStatus(`${isPDF ? 'PDF' : 'Text'} file must be smaller than ${maxSize / 1024 / 1024}MB`, 'error');
+                return;
+            }
+
+            selectedFile = file;
+
+            // Update UI
+            document.getElementById('uploadPrompt').classList.add('hidden');
+            document.getElementById('fileInfo').classList.remove('hidden');
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = `${(file.size / 1024).toFixed(2)} KB`;
+
+            // Suggest title from filename
+            if (!titleInput.value) {
+                const suggestedTitle = file.name
+                    .replace(/\.(pdf|txt)$/i, '')
+                    .replace(/[-_]/g, ' ');
+                titleInput.value = suggestedTitle;
+            }
+
+            updateUploadButton();
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            document.getElementById('uploadPrompt').classList.remove('hidden');
+            document.getElementById('fileInfo').classList.add('hidden');
+            updateUploadButton();
+        }
+
+        function updateUploadButton() {
+            uploadBtn.disabled = !selectedFile || !titleInput.value.trim();
+        }
+
+        async function handleUpload() {
+            if (!selectedFile || !titleInput.value.trim()) {
+                showStatus('Please select a file and enter a title', 'error');
+                return;
+            }
+
+            const isPDF = selectedFile.type === 'application/pdf';
+            const isText = selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt');
+
+            uploadBtn.disabled = true;
+            document.getElementById('uploadText').textContent = 'Processing...';
+            showStatus('Processing your file...', 'info');
+
+            try {
+                if (isText) {
+                    const textContent = await readFileAsText(selectedFile);
+                    await uploadText(textContent);
+                } else if (isPDF) {
+                    const base64Data = await readFileAsBase64(selectedFile);
+                    await uploadPDF(base64Data);
+                }
+            } catch (error) {
+                showStatus(error.message || 'Upload failed', 'error');
+                uploadBtn.disabled = false;
+                document.getElementById('uploadText').textContent = 'Upload and Process';
+            }
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function uploadText(textContent) {
+            console.log('Uploading text with batch format');
+            const response = await fetch('/api/trpc/content.uploadText?batch=1', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    0: {
+                        json: {
+                            title: titleInput.value.trim(),
+                            author: document.getElementById('author').value.trim() || undefined,
+                            textContent: textContent.trim()
+                        }
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Upload error:', errorText);
+                let errorMessage = 'Upload failed';
+                try {
+                    const error = JSON.parse(errorText);
+                    errorMessage = error[0]?.error?.json?.message || error.error?.json?.message || error.error?.message || 'Upload failed';
+                } catch (e) {
+                    errorMessage = errorText || 'Upload failed';
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await response.json();
+            console.log('Upload success:', data);
+            const result = data[0]?.result?.data || data.result?.data;
+            showStatus(`Success! ${result.paragraphCount} paragraphs extracted.`, 'success');
+
+            // Redirect to reader after 2 seconds
+            setTimeout(() => {
+                window.location.href = `/reader/${result.contentId}`;
+            }, 2000);
+        }
+
+        async function uploadPDF(base64Data) {
+            console.log('Uploading PDF with batch format');
+            const response = await fetch('/api/trpc/content.uploadPdf?batch=1', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    0: {
+                        json: {
+                            title: titleInput.value.trim(),
+                            author: document.getElementById('author').value.trim() || undefined,
+                            fileName: selectedFile.name,
+                            fileType: selectedFile.type,
+                            fileData: base64Data
+                        }
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Upload error:', errorText);
+                let errorMessage = 'Upload failed';
+                try {
+                    const error = JSON.parse(errorText);
+                    errorMessage = error[0]?.error?.json?.message || error.error?.json?.message || error.error?.message || 'Upload failed';
+                } catch (e) {
+                    errorMessage = errorText || 'Upload failed';
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await response.json();
+            console.log('Upload success:', data);
+            const result = data[0]?.result?.data || data.result?.data;
+            showStatus(`Success! ${result.paragraphCount} paragraphs extracted.`, 'success');
+
+            // Redirect to reader after 2 seconds
+            setTimeout(() => {
+                window.location.href = `/reader/${result.contentId}`;
+            }, 2000);
+        }
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+
+            if (type === 'error') {
+                statusEl.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                statusEl.classList.add('bg-green-100', 'text-green-700');
+            } else {
+                statusEl.classList.add('bg-blue-100', 'text-blue-700');
+            }
+
+            statusEl.classList.remove('hidden');
+        }
+
+        // Log on page load to confirm this is the new version
+        console.log('AdaptoBook Upload v2 - Using correct tRPC format with input field');
+    </script>
+</body>
+
+</html>

@@ -4,9 +4,9 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { CALIBRATION_PASSAGES, assessReadingLevel, analyzePerformance } from './calibration';
 import { z } from "zod";
-import { 
-  createCalibrationTest, 
-  createReadingProfile, 
+import {
+  createCalibrationTest,
+  createReadingProfile,
   getReadingProfileByUserId,
   updateReadingProfile,
   getAllContent,
@@ -30,7 +30,7 @@ import { checkRateLimit, getClientIP } from './_core/rateLimit';
 import { adaptWordLevelRouter } from "./adaptWordLevelRouter";
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
+  // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -57,7 +57,7 @@ export const appRouter = router({
         }))
       };
     }),
-    
+
     submitTest: protectedProcedure
       .input((val: unknown) => {
         const input = val as { passageText: string; passageDifficulty: number; readingTime: number; answers: number[] };
@@ -69,11 +69,11 @@ export const appRouter = router({
         if (!passage) {
           throw new Error('Invalid passage');
         }
-        
+
         // Calculate correct answers
         const correctAnswers = input.answers.filter((answer: number, i: number) => answer === passage.questions[i].correctAnswer).length;
         const totalQuestions = passage.questions.length;
-        
+
         // Assess reading level
         const assessedLevel = assessReadingLevel(
           input.readingTime,
@@ -81,15 +81,15 @@ export const appRouter = router({
           totalQuestions,
           input.passageDifficulty
         );
-        
+
         // Analyze performance
         const { strengths, challenges } = analyzePerformance(passage.questions, input.answers);
-        
+
         // Calculate reading speed (WPM)
         const words = input.passageText.split(/\s+/).length;
         const readingSpeed = Math.round((words / input.readingTime) * 60);
         const comprehensionAccuracy = Math.round((correctAnswers / totalQuestions) * 100);
-        
+
         // Save calibration test
         await createCalibrationTest({
           userId: ctx.user.id,
@@ -100,7 +100,7 @@ export const appRouter = router({
           totalQuestions,
           assessedLevel
         });
-        
+
         // Create or update reading profile
         const existingProfile = await getReadingProfileByUserId(ctx.user.id);
         const profileData = {
@@ -113,13 +113,13 @@ export const appRouter = router({
           challenges: JSON.stringify(challenges),
           lastCalibrated: new Date()
         };
-        
+
         if (existingProfile) {
           await updateReadingProfile(ctx.user.id, profileData);
         } else {
           await createReadingProfile(profileData);
         }
-        
+
         return {
           level: assessedLevel,
           readingSpeed,
@@ -131,12 +131,12 @@ export const appRouter = router({
         };
       })
   }),
-  
+
   profile: router({
     get: protectedProcedure.query(async ({ ctx }: { ctx: { user: { id: number } } }) => {
       const profile = await getReadingProfileByUserId(ctx.user.id);
       if (!profile) return null;
-      
+
       return {
         ...profile,
         strengths: profile.strengths ? JSON.parse(profile.strengths) : [],
@@ -155,12 +155,12 @@ export const appRouter = router({
         return { microLevel: clamped };
       })
   }),
-  
+
   content: router({
     list: publicProcedure.query(async () => {
       return await getAllContent();
     }),
-    
+
     get: publicProcedure
       .input((val: unknown) => {
         const input = val as { id: number };
@@ -169,14 +169,14 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return await getContentById(input.id);
       }),
-    
+
     // Get a single paragraph variant at a specific difficulty level
     getParagraphVariant: publicProcedure
       .input((val: unknown) => {
-        const input = val as { 
-          contentId: number; 
-          chapterNumber: number; 
-          paragraphIndex: number; 
+        const input = val as {
+          contentId: number;
+          chapterNumber: number;
+          paragraphIndex: number;
           level: number;
         };
         return input;
@@ -188,19 +188,19 @@ export const appRouter = router({
           input.paragraphIndex,
           input.level
         );
-        
+
         if (!variant) {
           throw new Error('Paragraph variant not found');
         }
-        
+
         return variant;
       }),
-    
+
     // Get all paragraph variants for a chapter (all levels)
     getChapter: publicProcedure
       .input((val: unknown) => {
-        const input = val as { 
-          contentId: number; 
+        const input = val as {
+          contentId: number;
           chapterNumber: number;
         };
         return input;
@@ -210,10 +210,10 @@ export const appRouter = router({
           input.contentId,
           input.chapterNumber
         );
-        
+
         // Group variants by paragraph index
         const paragraphGroups: Record<number, any> = {};
-        
+
         for (const variant of variants) {
           if (!paragraphGroups[variant.paragraphIndex]) {
             paragraphGroups[variant.paragraphIndex] = {
@@ -223,13 +223,13 @@ export const appRouter = router({
           }
           paragraphGroups[variant.paragraphIndex].levels[variant.level] = variant.text;
         }
-        
+
         return {
           chapterNumber: input.chapterNumber,
           paragraphs: Object.values(paragraphGroups)
         };
       }),
-    
+
     // Get all variants for entire content (useful for preloading)
     getAllVariants: publicProcedure
       .input((val: unknown) => {
@@ -239,7 +239,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return await getAllVariantsForContent(input.contentId);
       }),
-    
+
     // Legacy adapt endpoint - kept for backwards compatibility but deprecated
     adapt: protectedProcedure
       .input((val: unknown) => {
@@ -251,18 +251,20 @@ export const appRouter = router({
         if (!content) {
           throw new Error('Content not found');
         }
-        
+
         const adapted = await adaptTextToLevel(content.originalText, input.targetLevel);
         return adapted;
       }),
-    
+
     // Upload PDF and extract text
     uploadPdf: publicProcedure
       .input(
         z.object({
+          fileName: z.string().min(1),
+          fileType: z.string().min(1),
+          fileData: z.string(), // base64 encoded PDF
           title: z.string().min(1),
           author: z.string().optional(),
-          pdfData: z.string(), // base64 encoded PDF
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -270,26 +272,24 @@ export const appRouter = router({
         const clientIP = getClientIP({ headers: ctx.req.headers as Record<string, string | string[] | undefined> });
         const rateLimitKey = `pdf_upload:${clientIP}`;
         const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1000); // 24 hours
-        
+
         if (!allowed) {
           throw new Error('Rate limit exceeded: Maximum 10 PDF uploads per day');
         }
-        
         // Decode base64 PDF
         let pdfBuffer: Buffer;
         try {
-          pdfBuffer = Buffer.from(input.pdfData, 'base64');
+          pdfBuffer = Buffer.from(input.fileData, 'base64');
         } catch (error) {
           console.error('Failed to decode base64 PDF:', error);
           throw new Error('Invalid PDF data: failed to decode base64');
         }
-        
+
         // Validate PDF size (max 10MB)
         const sizeMB = pdfBuffer.length / (1024 * 1024);
         if (sizeMB > 10) {
-          throw new Error('PDF file exceeds maximum size limit of 10MB');
         }
-        
+
         // Extract text from PDF
         let paragraphs: string[];
         try {
@@ -298,15 +298,15 @@ export const appRouter = router({
           console.error('PDF extraction failed:', error);
           throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        
+
         if (paragraphs.length === 0) {
           throw new Error('No text could be extracted from PDF. The PDF might be image-based or corrupted.');
         }
-        
+
         // Classify CEFR level
         const sampleText = paragraphs.slice(0, 3).join(' ');
         const cefrLevel = classifyTextCEFRCached(sampleText);
-        
+
         // Store PDF file (optional, for future reference)
         let pdfUrl: string | undefined;
         try {
@@ -319,15 +319,18 @@ export const appRouter = router({
         } catch (error) {
           console.warn('Failed to store PDF file:', error);
         }
-        
+
         // Create content entry
         const fullText = paragraphs.join('\n\n');
         const wordCount = fullText.split(/\s+/).length;
-        
+
         const contentResult = await createContent({
           title: input.title,
           author: input.author || null,
           originalText: fullText,
+          // Store original filename and MIME type for reference
+          originalFileName: input.fileName,
+          originalFileType: input.fileType,
           baseDifficulty: 4, // Default to level 4 (original)
           wordCount,
           category: 'pdf_upload',
@@ -335,15 +338,15 @@ export const appRouter = router({
           pdfUrl: pdfUrl || null,
           cefrLevel,
         });
-        
+
         const contentId = contentResult.id;
-        
+
         // Store paragraphs with all difficulty levels (1-4)
         // PDFs are treated as single "chapter" with paragraphs
         // Level 4 is the original text, levels 1-3 are AI-generated adaptations
         for (let i = 0; i < paragraphs.length; i++) {
           const originalText = paragraphs[i];
-          
+
           // Store level 4 (original) immediately
           await createParagraphVariant({
             contentId,
@@ -353,7 +356,7 @@ export const appRouter = router({
             text: originalText,
             originalText: originalText,
           });
-          
+
           // Generate and store levels 1, 2, and 3 using AI
           // This makes reading instant - no AI calls needed during reading
           const levelsToGenerate = [1, 2, 3];
@@ -364,7 +367,7 @@ export const appRouter = router({
                 4, // current level (original)
                 targetLevel
               );
-              
+
               await createParagraphVariant({
                 contentId,
                 chapterNumber: 1,
@@ -387,7 +390,7 @@ export const appRouter = router({
             }
           }
         }
-        
+
         return {
           contentId,
           title: input.title,
@@ -396,7 +399,7 @@ export const appRouter = router({
           cefrLevel,
         };
       }),
-    
+
     // Adapt a paragraph on-the-fly
     adaptParagraph: publicProcedure
       .input(
@@ -413,11 +416,11 @@ export const appRouter = router({
         const clientIP = getClientIP({ headers: ctx.req.headers as Record<string, string | string[] | undefined> });
         const rateLimitKey = `adapt_paragraph:${clientIP}`;
         const allowed = checkRateLimit(rateLimitKey, 50, 24 * 60 * 60 * 1000); // 24 hours
-        
+
         if (!allowed) {
           throw new Error('Rate limit exceeded: Maximum 50 paragraph adaptations per day');
         }
-        
+
         // Check if variant already exists
         const existing = await getParagraphVariant(
           input.contentId,
@@ -425,11 +428,11 @@ export const appRouter = router({
           input.paragraphIndex,
           input.targetLevel
         );
-        
+
         if (existing) {
           return { text: existing.text };
         }
-        
+
         // Get original paragraph (level 4)
         const original = await getParagraphVariant(
           input.contentId,
@@ -437,18 +440,18 @@ export const appRouter = router({
           input.paragraphIndex,
           4
         );
-        
+
         if (!original) {
           throw new Error('Paragraph not found');
         }
-        
+
         // Adapt paragraph using LLM
         const adaptedText = await adaptParagraph(
           original.text,
           input.currentLevel,
           input.targetLevel
         );
-        
+
         // Cache the result
         await createParagraphVariant({
           contentId: input.contentId,
@@ -458,10 +461,10 @@ export const appRouter = router({
           text: adaptedText,
           originalText: original.text,
         });
-        
+
         return { text: adaptedText };
       }),
-    
+
     // Upload text file directly (simpler than PDF)
     uploadText: publicProcedure
       .input(
@@ -476,29 +479,29 @@ export const appRouter = router({
         const clientIP = getClientIP({ headers: ctx.req.headers as Record<string, string | string[] | undefined> });
         const rateLimitKey = `text_upload:${clientIP}`;
         const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1000); // 24 hours
-        
+
         if (!allowed) {
           throw new Error('Rate limit exceeded: Maximum 10 uploads per day');
         }
-        
+
         // Split text into paragraphs
         const paragraphs = input.textContent
           .split(/\n\s*\n+/) // Split on double newlines
           .map(p => p.replace(/\s+/g, ' ').trim()) // Normalize whitespace
           .filter(p => p.length > 50) // Filter out very short paragraphs
           .filter(p => !p.match(/^\d+$/)); // Filter out page numbers
-        
+
         if (paragraphs.length === 0) {
           throw new Error('No valid paragraphs found in text. Please ensure your text has proper paragraph breaks.');
         }
-        
+
         // Classify CEFR level
         const sampleText = paragraphs.slice(0, 3).join(' ');
         const cefrLevel = classifyTextCEFRCached(sampleText);
-        
+
         // Create content entry
         const wordCount = input.textContent.split(/\s+/).length;
-        
+
         const contentResult = await createContent({
           title: input.title,
           author: input.author || null,
@@ -510,15 +513,15 @@ export const appRouter = router({
           pdfUrl: null,
           cefrLevel,
         });
-        
+
         const contentId = contentResult.id;
-        
+
         // Store paragraphs with all difficulty levels (1-4)
         // Text files are treated as single "chapter" with paragraphs
         // Level 4 is the original text, levels 1-3 are AI-generated adaptations
         for (let i = 0; i < paragraphs.length; i++) {
           const originalText = paragraphs[i];
-          
+
           // Store level 4 (original) immediately
           await createParagraphVariant({
             contentId,
@@ -528,7 +531,7 @@ export const appRouter = router({
             text: originalText,
             originalText: originalText,
           });
-          
+
           // Generate and store levels 1, 2, and 3 using AI
           // This makes reading instant - no AI calls needed during reading
           const levelsToGenerate = [1, 2, 3];
@@ -539,7 +542,7 @@ export const appRouter = router({
                 4, // current level (original)
                 targetLevel
               );
-              
+
               await createParagraphVariant({
                 contentId,
                 chapterNumber: 1,
@@ -562,7 +565,7 @@ export const appRouter = router({
             }
           }
         }
-        
+
         return {
           contentId,
           title: input.title,
@@ -572,7 +575,7 @@ export const appRouter = router({
         };
       })
   }),
-  
+
   reading: router({
     startSession: protectedProcedure
       .input((val: unknown) => {
@@ -588,19 +591,19 @@ export const appRouter = router({
           completedParagraphs: 0,
           status: 'active'
         });
-        
+
         return { sessionId: result.id };
       }),
-    
+
     getActiveSession: protectedProcedure.query(async ({ ctx }) => {
       return await getActiveSessionByUserId(ctx.user.id);
     }),
-    
+
     updateProgress: protectedProcedure
       .input((val: unknown) => {
-        const input = val as { 
-          sessionId: number; 
-          paragraphIndex: number; 
+        const input = val as {
+          sessionId: number;
+          paragraphIndex: number;
           difficultyLevel: number;
           comprehensionScore?: number;
           timeSpent?: number;
@@ -618,17 +621,17 @@ export const appRouter = router({
           timeSpent: input.timeSpent,
           manualAdjustment: input.manualAdjustment || false
         });
-        
+
         // Update session's current position
         await updateReadingSession(input.sessionId, {
           currentPosition: input.paragraphIndex,
           completedParagraphs: input.paragraphIndex + 1,
           lastAccessedAt: new Date()
         });
-        
+
         return { success: true };
       }),
-    
+
     getProgress: protectedProcedure
       .input((val: unknown) => {
         const input = val as { sessionId: number };
