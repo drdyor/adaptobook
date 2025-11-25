@@ -11,3 +11,4 @@ sample books/
 # Intermediate extraction files (optional - keep for reference)
 content/the-prince-extracted.json
 content/the-prince-cleaned.json
+.vercel
