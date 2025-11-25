@@ -338,17 +338,54 @@ export const appRouter = router({
         
         const contentId = contentResult.id;
         
-        // Store paragraphs as level 4 (original) variants
+        // Store paragraphs with all difficulty levels (1-4)
         // PDFs are treated as single "chapter" with paragraphs
+        // Level 4 is the original text, levels 1-3 are AI-generated adaptations
         for (let i = 0; i < paragraphs.length; i++) {
+          const originalText = paragraphs[i];
+          
+          // Store level 4 (original) immediately
           await createParagraphVariant({
             contentId,
             chapterNumber: 1,
             paragraphIndex: i,
             level: 4,
-            text: paragraphs[i],
-            originalText: paragraphs[i],
+            text: originalText,
+            originalText: originalText,
           });
+          
+          // Generate and store levels 1, 2, and 3 using AI
+          // This makes reading instant - no AI calls needed during reading
+          const levelsToGenerate = [1, 2, 3];
+          for (const targetLevel of levelsToGenerate) {
+            try {
+              const adaptedText = await adaptParagraph(
+                originalText,
+                4, // current level (original)
+                targetLevel
+              );
+              
+              await createParagraphVariant({
+                contentId,
+                chapterNumber: 1,
+                paragraphIndex: i,
+                level: targetLevel,
+                text: adaptedText,
+                originalText: originalText,
+              });
+            } catch (error) {
+              console.error(`Failed to generate level ${targetLevel} for paragraph ${i}:`, error);
+              // If AI generation fails, store original text as fallback
+              await createParagraphVariant({
+                contentId,
+                chapterNumber: 1,
+                paragraphIndex: i,
+                level: targetLevel,
+                text: originalText,
+                originalText: originalText,
+              });
+            }
+          }
         }
         
         return {
@@ -476,17 +513,54 @@ export const appRouter = router({
         
         const contentId = contentResult.id;
         
-        // Store paragraphs as level 4 (original) variants
+        // Store paragraphs with all difficulty levels (1-4)
         // Text files are treated as single "chapter" with paragraphs
+        // Level 4 is the original text, levels 1-3 are AI-generated adaptations
         for (let i = 0; i < paragraphs.length; i++) {
+          const originalText = paragraphs[i];
+          
+          // Store level 4 (original) immediately
           await createParagraphVariant({
             contentId,
             chapterNumber: 1,
             paragraphIndex: i,
             level: 4,
-            text: paragraphs[i],
-            originalText: paragraphs[i],
+            text: originalText,
+            originalText: originalText,
           });
+          
+          // Generate and store levels 1, 2, and 3 using AI
+          // This makes reading instant - no AI calls needed during reading
+          const levelsToGenerate = [1, 2, 3];
+          for (const targetLevel of levelsToGenerate) {
+            try {
+              const adaptedText = await adaptParagraph(
+                originalText,
+                4, // current level (original)
+                targetLevel
+              );
+              
+              await createParagraphVariant({
+                contentId,
+                chapterNumber: 1,
+                paragraphIndex: i,
+                level: targetLevel,
+                text: adaptedText,
+                originalText: originalText,
+              });
+            } catch (error) {
+              console.error(`Failed to generate level ${targetLevel} for paragraph ${i}:`, error);
+              // If AI generation fails, store original text as fallback
+              await createParagraphVariant({
+                contentId,
+                chapterNumber: 1,
+                paragraphIndex: i,
+                level: targetLevel,
+                text: originalText,
+                originalText: originalText,
+              });
+            }
+          }
         }
         
         return {
