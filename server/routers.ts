@@ -276,7 +276,13 @@ export const appRouter = router({
         }
         
         // Decode base64 PDF
-        const pdfBuffer = Buffer.from(input.pdfData, 'base64');
+        let pdfBuffer: Buffer;
+        try {
+          pdfBuffer = Buffer.from(input.pdfData, 'base64');
+        } catch (error) {
+          console.error('Failed to decode base64 PDF:', error);
+          throw new Error('Invalid PDF data: failed to decode base64');
+        }
         
         // Validate PDF size (max 10MB)
         const sizeMB = pdfBuffer.length / (1024 * 1024);
@@ -285,10 +291,16 @@ export const appRouter = router({
         }
         
         // Extract text from PDF
-        const paragraphs = await extractAndSplitPDF(pdfBuffer);
+        let paragraphs: string[];
+        try {
+          paragraphs = await extractAndSplitPDF(pdfBuffer);
+        } catch (error) {
+          console.error('PDF extraction failed:', error);
+          throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
         
         if (paragraphs.length === 0) {
-          throw new Error('No text could be extracted from PDF');
+          throw new Error('No text could be extracted from PDF. The PDF might be image-based or corrupted.');
         }
         
         // Classify CEFR level
