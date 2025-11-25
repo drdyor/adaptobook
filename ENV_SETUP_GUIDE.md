@@ -4,8 +4,7 @@ Your `.env` file is missing several required variables. Here's what you need to 
 
 ## Current .env Content (from terminal):
 ```
-OPENROUTER_API_KEY=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
-
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 ```
 
 ## Complete .env Template:
@@ -18,12 +17,12 @@ Copy this content to your `.env` file:
 # ============================================
 # Get this from Supabase Dashboard -> Settings -> Database -> Connection String (Session mode)
 # Example: postgresql://postgres:your-password@db.xxxxx.supabase.co:5432/postgres
-DATABASE_URL=postgresql://postgres:Noy275jrd@db.your-project-ref.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:your-password@db.your-project-ref.supabase.co:5432/postgres
 
 # ============================================
 # AI API KEY (ALREADY SET)
 # ============================================
-OPENROUTER_API_KEY=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
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 
 # ============================================
 # OAUTH (OPTIONAL - Can leave empty for local dev)
@@ -68,10 +67,10 @@ Run this command to update your `.env` file with the missing variables (you'll s
 ```bash
 cat > .env << 'EOF'
 # Database Configuration
-DATABASE_URL=postgresql://postgres:your-Noy275jrd@db.your-project-ref.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:your-password@db.your-project-ref.supabase.co:5432/postgres
 
 # OpenRouter API Key
-OPENROUTER_API_KEY=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
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 
 # OAuth (optional for local dev)
 OAUTH_SERVER_URL=

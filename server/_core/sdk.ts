@@ -27,6 +27,10 @@ export type SessionPayload = {
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
 const GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
 const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
+const isOAuthConfigured =
+  Boolean(ENV.oAuthServerUrl?.trim()) &&
+  Boolean(ENV.appId?.trim()) &&
+  Boolean(ENV.cookieSecret?.trim());
 
 class OAuthService {
   constructor(private client: ReturnType<typeof axios.create>) {
@@ -81,6 +85,31 @@ const createOAuthHttpClient = (): AxiosInstance =>
     baseURL: ENV.oAuthServerUrl,
     timeout: AXIOS_TIMEOUT_MS,
   });
+
+class DisabledOAuthSdk {
+  private error(): Error {
+    console.warn(
+      "[OAuth] Attempted to use OAuth SDK, but required environment variables are missing."
+    );
+    return new Error("OAuth is disabled (missing env vars).");
+  }
+
+  async exchangeCodeForToken(): Promise<ExchangeTokenResponse> {
+    throw this.error();
+  }
+
+  async getUserInfo(): Promise<GetUserInfoResponse> {
+    throw this.error();
+  }
+
+  async createSessionToken(): Promise<string> {
+    throw this.error();
+  }
+
+  async authenticateRequest(): Promise<User> {
+    throw ForbiddenError("OAuth is disabled.");
+  }
+}
 
 class SDKServer {
   private readonly client: AxiosInstance;
@@ -301,4 +330,10 @@ class SDKServer {
   }
 }
 
-export const sdk = new SDKServer();
+export const sdk = isOAuthConfigured ? new SDKServer() : new DisabledOAuthSdk();
+
+if (!isOAuthConfigured) {
+  console.warn(
+    "[OAuth] SDK disabled because required environment variables are missing."
+  );
+}
