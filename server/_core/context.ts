@@ -14,9 +14,12 @@ export async function createContext(
   let user: User | null = null;
 
   try {
-    user = await sdk.authenticateRequest(opts.req);
+    if (ENV.oAuthServerUrl) {
+      user = await sdk.authenticateRequest(opts.req);
+    }
   } catch (error) {
     // Authentication is optional for public procedures.
+    // If authentication is disabled, we don't need to try.
     user = null;
   }
 
