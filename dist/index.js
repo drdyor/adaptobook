@@ -14,37 +14,41 @@ var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
 
 // server/db.ts
 import { eq, and } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
 
 // drizzle/schema.ts
-import { double, index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
-var users = mysqlTable("users", {
+import { boolean, doublePrecision, index, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+var roleEnum = pgEnum("role", ["user", "admin"]);
+var sourceTypeEnum = pgEnum("sourceType", ["pre_generated", "pdf_upload"]);
+var statusEnum = pgEnum("status", ["active", "paused", "completed"]);
+var users = pgTable("users", {
   /**
    * Surrogate primary key. Auto-incremented numeric value managed by the database.
    * Use this for relations between tables.
    */
-  id: int("id").autoincrement().primaryKey(),
+  id: serial("id").primaryKey(),
   /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: roleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull()
 });
-var readingProfiles = mysqlTable("readingProfiles", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().references(() => users.id),
+var readingProfiles = pgTable("readingProfiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id),
   /** Reading level from 1 (beginner) to 7 (advanced) */
-  level: int("level").notNull(),
+  level: integer("level").notNull(),
   /** Fine-grained preference captured by the Mind-Reader slider (1.0 - 4.0) */
-  microLevel: double("microLevel").default(2).notNull(),
+  microLevel: doublePrecision("microLevel").default(2).notNull(),
   /** Reading speed in words per minute */
-  readingSpeed: int("readingSpeed"),
+  readingSpeed: integer("readingSpeed"),
   /** Comprehension accuracy percentage (0-100) */
-  comprehensionAccuracy: int("comprehensionAccuracy"),
+  comprehensionAccuracy: integer("comprehensionAccuracy"),
   /** JSON array of strengths like ["vocabulary", "pacing"] */
   strengths: text("strengths"),
   /** JSON array of challenges like ["complex syntax", "inference"] */
@@ -52,101 +56,110 @@ var readingProfiles = mysqlTable("readingProfiles", {
   /** Timestamp of last calibration test */
   lastCalibrated: timestamp("lastCalibrated").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+  updatedAt: timestamp("updatedAt").defaultNow().notNull()
 });
-var contentLibrary = mysqlTable("contentLibrary", {
-  id: int("id").autoincrement().primaryKey(),
+var contentLibrary = pgTable("contentLibrary", {
+  id: serial("id").primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
   author: varchar("author", { length: 255 }),
   /** Original full text content */
   originalText: text("originalText").notNull(),
   /** Base difficulty level of original text (1-7) */
-  baseDifficulty: int("baseDifficulty").notNull(),
+  baseDifficulty: integer("baseDifficulty").notNull(),
   /** Flesch-Kincaid grade level of original */
-  fleschKincaid: int("fleschKincaid"),
+  fleschKincaid: integer("fleschKincaid"),
   /** Word count */
-  wordCount: int("wordCount"),
+  wordCount: integer("wordCount"),
   /** Category like "fiction", "non-fiction", "science" */
   category: varchar("category", { length: 100 }),
+  /** Source type: pre_generated (demo books) or pdf_upload */
+  sourceType: sourceTypeEnum("sourceType").default("pre_generated").notNull(),
+  /** URL to uploaded PDF file (if sourceType is pdf_upload) */
+  pdfUrl: varchar("pdfUrl", { length: 512 }),
+  /** CEFR level classification (A1, A2, B1, B2, C1, C2) */
+  cefrLevel: varchar("cefrLevel", { length: 10 }),
   createdAt: timestamp("createdAt").defaultNow().notNull()
 });
-var readingSessions = mysqlTable("readingSessions", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().references(() => users.id),
-  contentId: int("contentId").notNull().references(() => contentLibrary.id),
+var readingSessions = pgTable("readingSessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id),
+  contentId: integer("contentId").notNull().references(() => contentLibrary.id),
   /** Difficulty level used for this session (1-7) */
-  difficultyLevel: int("difficultyLevel").notNull(),
+  difficultyLevel: integer("difficultyLevel").notNull(),
   /** Current paragraph/section index */
-  currentPosition: int("currentPosition").default(0).notNull(),
+  currentPosition: integer("currentPosition").default(0).notNull(),
   /** Total paragraphs completed */
-  completedParagraphs: int("completedParagraphs").default(0).notNull(),
+  completedParagraphs: integer("completedParagraphs").default(0).notNull(),
   /** Average comprehension score for this session (0-100) */
-  avgComprehension: int("avgComprehension"),
+  avgComprehension: integer("avgComprehension"),
   /** Session status */
-  status: mysqlEnum("status", ["active", "paused", "completed"]).default("active").notNull(),
+  status: statusEnum("status").default("active").notNull(),
   startedAt: timestamp("startedAt").defaultNow().notNull(),
-  lastAccessedAt: timestamp("lastAccessedAt").defaultNow().onUpdateNow().notNull(),
+  lastAccessedAt: timestamp("lastAccessedAt").defaultNow().notNull(),
   completedAt: timestamp("completedAt")
 });
-var progressTracking = mysqlTable("progressTracking", {
-  id: int("id").autoincrement().primaryKey(),
-  sessionId: int("sessionId").notNull().references(() => readingSessions.id),
-  userId: int("userId").notNull().references(() => users.id),
+var progressTracking = pgTable("progressTracking", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("sessionId").notNull().references(() => readingSessions.id),
+  userId: integer("userId").notNull().references(() => users.id),
   /** Paragraph index in the content */
-  paragraphIndex: int("paragraphIndex").notNull(),
+  paragraphIndex: integer("paragraphIndex").notNull(),
   /** Difficulty level for this paragraph (1-7) */
-  difficultyLevel: int("difficultyLevel").notNull(),
+  difficultyLevel: integer("difficultyLevel").notNull(),
   /** Comprehension score for this paragraph (0-100) */
-  comprehensionScore: int("comprehensionScore"),
+  comprehensionScore: integer("comprehensionScore"),
   /** Time spent reading this paragraph in seconds */
-  timeSpent: int("timeSpent"),
+  timeSpent: integer("timeSpent"),
   /** Whether difficulty was manually adjusted */
-  manualAdjustment: int("manualAdjustment").default(0).notNull(),
-  // 0 = false, 1 = true
+  manualAdjustment: boolean("manualAdjustment").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull()
 });
-var calibrationTests = mysqlTable("calibrationTests", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().references(() => users.id),
+var calibrationTests = pgTable("calibrationTests", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id),
   /** Test passage used */
   passageText: text("passageText").notNull(),
   /** Flesch-Kincaid level of passage */
-  passageDifficulty: int("passageDifficulty").notNull(),
+  passageDifficulty: integer("passageDifficulty").notNull(),
   /** Reading time in seconds */
-  readingTime: int("readingTime").notNull(),
+  readingTime: integer("readingTime").notNull(),
   /** Number of questions answered correctly */
-  correctAnswers: int("correctAnswers").notNull(),
+  correctAnswers: integer("correctAnswers").notNull(),
   /** Total number of questions */
-  totalQuestions: int("totalQuestions").notNull(),
+  totalQuestions: integer("totalQuestions").notNull(),
   /** Calculated reading level (1-7) */
-  assessedLevel: int("assessedLevel").notNull(),
+  assessedLevel: integer("assessedLevel").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull()
 });
-var paragraphVariants = mysqlTable("paragraphVariants", {
-  id: int("id").autoincrement().primaryKey(),
+var paragraphVariants = pgTable("paragraphVariants", {
+  id: serial("id").primaryKey(),
   /** Reference to the content/book this paragraph belongs to */
-  contentId: int("contentId").notNull().references(() => contentLibrary.id),
+  contentId: integer("contentId").notNull().references(() => contentLibrary.id),
   /** Chapter number (e.g., 1-5 for first 5 chapters) */
-  chapterNumber: int("chapterNumber").notNull(),
+  chapterNumber: integer("chapterNumber").notNull(),
   /** Paragraph index within the chapter (0-based) */
-  paragraphIndex: int("paragraphIndex").notNull(),
+  paragraphIndex: integer("paragraphIndex").notNull(),
   /** Difficulty level (1-4 for Elementary to Middle School) */
-  level: int("level").notNull(),
+  level: integer("level").notNull(),
   /** Pre-generated paragraph text at this difficulty level */
   text: text("text").notNull(),
   /** Original paragraph text (level 4 baseline) */
   originalText: text("originalText"),
   createdAt: timestamp("createdAt").defaultNow().notNull()
 });
-var wordLevel = mysqlTable("wordLevel", {
-  id: int("id").autoincrement().primaryKey(),
-  contentId: int("contentId").notNull().references(() => contentLibrary.id),
-  paragraphIndex: int("paragraphIndex").notNull(),
+var wordLevel = pgTable("wordLevel", {
+  id: serial("id").primaryKey(),
+  contentId: integer("contentId").notNull().references(() => contentLibrary.id),
+  paragraphIndex: integer("paragraphIndex").notNull(),
   /** JSON array of word objects with level1-4 variants */
-  wordSequence: json("wordSequence").$type().notNull(),
+  wordSequence: jsonb("wordSequence").$type().notNull(),
   createdAt: timestamp("createdAt").defaultNow()
 }, (table) => ({
   contentParagraphIdx: index("idx_wordLevel_content_paragraph").on(
+    table.contentId,
+    table.paragraphIndex
+  ),
+  contentParagraphUnique: uniqueIndex("uq_wordLevel_content_paragraph").on(
     table.contentId,
     table.paragraphIndex
   )
@@ -161,7 +174,8 @@ var ENV = {
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? ""
+  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  openRouterApiKey: process.env.OPENROUTER_API_KEY ?? ""
 };
 
 // server/db.ts
@@ -169,7 +183,10 @@ var _db = null;
 async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const pool = new pg.Pool({
+        connectionString: process.env.DATABASE_URL
+      });
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -217,7 +234,8 @@ async function upsertUser(user) {
     if (Object.keys(updateSet).length === 0) {
       updateSet.lastSignedIn = /* @__PURE__ */ new Date();
     }
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet
     });
   } catch (error) {
@@ -268,11 +286,17 @@ async function getContentById(id) {
   const result = await db.select().from(contentLibrary).where(eq(contentLibrary.id, id)).limit(1);
   return result.length > 0 ? result[0] : void 0;
 }
+async function createContent(content) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(contentLibrary).values(content).returning({ id: contentLibrary.id });
+  return result[0];
+}
 async function createReadingSession(session) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(readingSessions).values(session);
-  return result;
+  const result = await db.insert(readingSessions).values(session).returning({ id: readingSessions.id });
+  return result[0];
 }
 async function getActiveSessionByUserId(userId) {
   const db = await getDb();
@@ -299,7 +323,8 @@ async function getSessionProgress(sessionId) {
 async function saveWordLevelSequence(entry) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(wordLevel).values(entry).onDuplicateKeyUpdate({
+  await db.insert(wordLevel).values(entry).onConflictDoUpdate({
+    target: [wordLevel.contentId, wordLevel.paragraphIndex],
     set: {
       wordSequence: entry.wordSequence,
       createdAt: /* @__PURE__ */ new Date()
@@ -321,6 +346,12 @@ async function updateMicroLevel(userId, microLevel) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(readingProfiles).set({ microLevel }).where(eq(readingProfiles.userId, userId));
+}
+async function createParagraphVariant(variant) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(paragraphVariants).values(variant);
+  return result;
 }
 async function getParagraphVariant(contentId, chapterNumber, paragraphIndex, level) {
   const db = await getDb();
@@ -382,6 +413,7 @@ var isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
 var EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
 var GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
 var GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
+var isOAuthConfigured = Boolean(ENV.oAuthServerUrl?.trim()) && Boolean(ENV.appId?.trim()) && Boolean(ENV.cookieSecret?.trim());
 var OAuthService = class {
   constructor(client) {
     this.client = client;
@@ -423,6 +455,26 @@ var createOAuthHttpClient = () => axios.create({
   baseURL: ENV.oAuthServerUrl,
   timeout: AXIOS_TIMEOUT_MS
 });
+var DisabledOAuthSdk = class {
+  error() {
+    console.warn(
+      "[OAuth] Attempted to use OAuth SDK, but required environment variables are missing."
+    );
+    return new Error("OAuth is disabled (missing env vars).");
+  }
+  async exchangeCodeForToken() {
+    throw this.error();
+  }
+  async getUserInfo() {
+    throw this.error();
+  }
+  async createSessionToken() {
+    throw this.error();
+  }
+  async authenticateRequest() {
+    throw ForbiddenError("OAuth is disabled.");
+  }
+};
 var SDKServer = class {
   client;
   oauthService;
@@ -589,7 +641,12 @@ var SDKServer = class {
     return user;
   }
 };
-var sdk = new SDKServer();
+var sdk = isOAuthConfigured ? new SDKServer() : new DisabledOAuthSdk();
+if (!isOAuthConfigured) {
+  console.warn(
+    "[OAuth] SDK disabled because required environment variables are missing."
+  );
+}
 
 // server/_core/oauth.ts
 function getQueryParam(req, key) {
@@ -874,6 +931,9 @@ function analyzePerformance(questions, userAnswers) {
   return { strengths, challenges };
 }
 
+// server/routers.ts
+import { z as z3 } from "zod";
+
 // server/_core/llm.ts
 var ensureArray = (value) => Array.isArray(value) ? value : [value];
 var normalizeContentPart = (part) => {
@@ -946,10 +1006,14 @@ var normalizeToolChoice = (toolChoice, tools) => {
   return toolChoice;
 };
 var resolveApiUrl = () => ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0 ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : "https://forge.manus.im/v1/chat/completions";
+var resolveOpenRouterUrl = () => "https://openrouter.ai/api/v1/chat/completions";
 var assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+  if (!ENV.openRouterApiKey && !ENV.forgeApiKey) {
+    throw new Error("Either OPENROUTER_API_KEY or BUILT_IN_FORGE_API_KEY must be configured");
   }
+};
+var shouldUseOpenRouter = () => {
+  return !!ENV.openRouterApiKey;
 };
 var normalizeResponseFormat = ({
   responseFormat,
@@ -990,12 +1054,25 @@ async function invokeLLM(params) {
     outputSchema,
     output_schema,
     responseFormat,
-    response_format
+    response_format,
+    maxTokens,
+    max_tokens
   } = params;
+  const useOpenRouter = shouldUseOpenRouter();
+  const apiUrl = useOpenRouter ? resolveOpenRouterUrl() : resolveApiUrl();
+  const apiKey = useOpenRouter ? ENV.openRouterApiKey : ENV.forgeApiKey;
   const payload = {
-    model: "gemini-2.5-flash",
+    model: useOpenRouter ? "x-ai/grok-beta" : "gemini-2.5-flash",
     messages: messages.map(normalizeMessage)
   };
+  const headers = {
+    "content-type": "application/json",
+    authorization: `Bearer ${apiKey}`
+  };
+  if (useOpenRouter) {
+    headers["HTTP-Referer"] = process.env.OPENROUTER_REFERER_URL || "https://adaptobook.com";
+    headers["X-Title"] = "AdaptoBook";
+  }
   if (tools && tools.length > 0) {
     payload.tools = tools;
   }
@@ -1006,10 +1083,15 @@ async function invokeLLM(params) {
   if (normalizedToolChoice) {
     payload.tool_choice = normalizedToolChoice;
   }
-  payload.max_tokens = 32768;
-  payload.thinking = {
-    "budget_tokens": 128
-  };
+  const maxTokensValue = maxTokens || max_tokens;
+  if (maxTokensValue) {
+    payload.max_tokens = maxTokensValue;
+  } else if (!useOpenRouter) {
+    payload.max_tokens = 32768;
+    payload.thinking = {
+      "budget_tokens": 128
+    };
+  }
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
     response_format,
@@ -1019,12 +1101,9 @@ async function invokeLLM(params) {
   if (normalizedResponseFormat) {
     payload.response_format = normalizedResponseFormat;
   }
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(apiUrl, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`
-    },
+    headers,
     body: JSON.stringify(payload)
   });
   if (!response.ok) {
@@ -1077,6 +1156,188 @@ Rewritten text at target level:`;
     level: targetLevel,
     paragraphs
   };
+}
+async function adaptParagraph(paragraph, currentLevel, targetLevel) {
+  if (currentLevel === targetLevel) {
+    return paragraph;
+  }
+  const direction = targetLevel > currentLevel ? "increase" : "decrease";
+  const levelChange = Math.abs(targetLevel - currentLevel);
+  const prompt = `${direction === "increase" ? "Increase" : "Decrease"} the reading difficulty of this paragraph by ${levelChange} grade level(s).
+
+Rules:
+- Preserve the exact meaning and information
+- ${direction === "increase" ? "Use more sophisticated vocabulary and complex sentence structures" : "Use simpler words and shorter sentences"}
+- Keep approximately the same length
+- Do NOT add new information or explanations
+
+Original paragraph:
+${paragraph}
+
+Rewritten paragraph:`;
+  const response = await invokeLLM({
+    messages: [
+      { role: "system", content: "You are an expert at adjusting text difficulty while preserving meaning." },
+      { role: "user", content: prompt }
+    ]
+  });
+  const messageContent = response.choices[0]?.message?.content;
+  return typeof messageContent === "string" ? messageContent : paragraph;
+}
+
+// server/_core/pdfExtraction.ts
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+async function extractTextFromPDFBuffer(buffer) {
+  const data = new Uint8Array(buffer);
+  const loadingTask = pdfjsLib.getDocument({ data });
+  const pdf = await loadingTask.promise;
+  let fullText = "";
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map((item) => item.str).join(" ");
+    fullText += pageText + "\n";
+  }
+  return fullText;
+}
+function splitIntoParagraphs(text2) {
+  return text2.split(/\n\s*\n+/).map((p) => p.replace(/\s+/g, " ").trim()).filter((p) => p.length > 50).filter((p) => !p.match(/^\d+$/));
+}
+async function extractAndSplitPDF(buffer) {
+  const text2 = await extractTextFromPDFBuffer(buffer);
+  return splitIntoParagraphs(text2);
+}
+
+// server/_core/cefr.ts
+function classifyTextCEFR(text2) {
+  const words = text2.split(/\s+/).length;
+  const sentences = text2.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
+  const avgWordsPerSentence = sentences > 0 ? words / sentences : 0;
+  const complexWords = text2.split(/\s+/).filter((word) => {
+    const vowels = word.match(/[aeiouAEIOU]/g)?.length || 0;
+    return vowels >= 3;
+  }).length;
+  const complexWordRatio = words > 0 ? complexWords / words : 0;
+  if (avgWordsPerSentence < 10 && complexWordRatio < 0.1) {
+    return "A1";
+  }
+  if (avgWordsPerSentence < 15 && complexWordRatio < 0.15) {
+    return "A2";
+  }
+  if (avgWordsPerSentence < 20 && complexWordRatio < 0.25) {
+    return "B1";
+  }
+  if (avgWordsPerSentence < 25 && complexWordRatio < 0.35) {
+    return "B2";
+  }
+  return "C1";
+}
+var cefrCache = /* @__PURE__ */ new Map();
+function classifyTextCEFRCached(text2) {
+  const cacheKey = text2.substring(0, 500).trim();
+  if (cefrCache.has(cacheKey)) {
+    return cefrCache.get(cacheKey);
+  }
+  const level = classifyTextCEFR(text2);
+  cefrCache.set(cacheKey, level);
+  if (cefrCache.size > 1e3) {
+    const firstKey = cefrCache.keys().next().value;
+    cefrCache.delete(firstKey);
+  }
+  return level;
+}
+
+// server/storage.ts
+function getStorageConfig() {
+  const baseUrl = ENV.forgeApiUrl;
+  const apiKey = ENV.forgeApiKey;
+  if (!baseUrl || !apiKey) {
+    throw new Error(
+      "Storage proxy credentials missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY"
+    );
+  }
+  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
+}
+function buildUploadUrl(baseUrl, relKey) {
+  const url = new URL("v1/storage/upload", ensureTrailingSlash(baseUrl));
+  url.searchParams.set("path", normalizeKey(relKey));
+  return url;
+}
+function ensureTrailingSlash(value) {
+  return value.endsWith("/") ? value : `${value}/`;
+}
+function normalizeKey(relKey) {
+  return relKey.replace(/^\/+/, "");
+}
+function toFormData(data, contentType, fileName) {
+  const blob = typeof data === "string" ? new Blob([data], { type: contentType }) : new Blob([data], { type: contentType });
+  const form = new FormData();
+  form.append("file", blob, fileName || "file");
+  return form;
+}
+function buildAuthHeaders(apiKey) {
+  return { Authorization: `Bearer ${apiKey}` };
+}
+async function storagePut(relKey, data, contentType = "application/octet-stream") {
+  const { baseUrl, apiKey } = getStorageConfig();
+  const key = normalizeKey(relKey);
+  const uploadUrl = buildUploadUrl(baseUrl, key);
+  const formData = toFormData(data, contentType, key.split("/").pop() ?? key);
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: buildAuthHeaders(apiKey),
+    body: formData
+  });
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(
+      `Storage upload failed (${response.status} ${response.statusText}): ${message}`
+    );
+  }
+  const url = (await response.json()).url;
+  return { key, url };
+}
+
+// server/_core/rateLimit.ts
+var rateLimitStore = /* @__PURE__ */ new Map();
+function checkRateLimit(key, maxRequests, windowMs) {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetAt: now + windowMs
+    });
+    return true;
+  }
+  if (entry.count >= maxRequests) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+function cleanupRateLimitStore() {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetAt) {
+      rateLimitStore.delete(key);
+    }
+  }
+}
+setInterval(cleanupRateLimitStore, 60 * 60 * 1e3);
+function getClientIP(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string") {
+    return forwarded.split(",")[0].trim();
+  }
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    return forwarded[0].split(",")[0].trim();
+  }
+  const realIP = req.headers["x-real-ip"];
+  if (typeof realIP === "string") {
+    return realIP;
+  }
+  return "unknown";
 }
 
 // server/adaptWordLevelRouter.ts
@@ -1344,6 +1605,179 @@ var appRouter = router({
       }
       const adapted = await adaptTextToLevel(content.originalText, input.targetLevel);
       return adapted;
+    }),
+    // Upload PDF and extract text
+    uploadPdf: publicProcedure.input(
+      z3.object({
+        title: z3.string().min(1),
+        author: z3.string().optional(),
+        pdfData: z3.string()
+        // base64 encoded PDF
+      })
+    ).mutation(async ({ input, ctx }) => {
+      const clientIP = getClientIP({ headers: ctx.req.headers });
+      const rateLimitKey = `pdf_upload:${clientIP}`;
+      const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1e3);
+      if (!allowed) {
+        throw new Error("Rate limit exceeded: Maximum 10 PDF uploads per day");
+      }
+      const pdfBuffer = Buffer.from(input.pdfData, "base64");
+      const sizeMB = pdfBuffer.length / (1024 * 1024);
+      if (sizeMB > 10) {
+        throw new Error("PDF file exceeds maximum size limit of 10MB");
+      }
+      const paragraphs = await extractAndSplitPDF(pdfBuffer);
+      if (paragraphs.length === 0) {
+        throw new Error("No text could be extracted from PDF");
+      }
+      const sampleText = paragraphs.slice(0, 3).join(" ");
+      const cefrLevel = classifyTextCEFRCached(sampleText);
+      let pdfUrl;
+      try {
+        const { url } = await storagePut(
+          `pdfs/${Date.now()}-${input.title.replace(/[^a-z0-9]/gi, "-")}.pdf`,
+          pdfBuffer,
+          "application/pdf"
+        );
+        pdfUrl = url;
+      } catch (error) {
+        console.warn("Failed to store PDF file:", error);
+      }
+      const fullText = paragraphs.join("\n\n");
+      const wordCount = fullText.split(/\s+/).length;
+      const contentResult = await createContent({
+        title: input.title,
+        author: input.author || null,
+        originalText: fullText,
+        baseDifficulty: 4,
+        // Default to level 4 (original)
+        wordCount,
+        category: "pdf_upload",
+        sourceType: "pdf_upload",
+        pdfUrl: pdfUrl || null,
+        cefrLevel
+      });
+      const contentId = contentResult.id;
+      for (let i = 0; i < paragraphs.length; i++) {
+        await createParagraphVariant({
+          contentId,
+          chapterNumber: 1,
+          paragraphIndex: i,
+          level: 4,
+          text: paragraphs[i],
+          originalText: paragraphs[i]
+        });
+      }
+      return {
+        contentId,
+        title: input.title,
+        author: input.author,
+        paragraphCount: paragraphs.length,
+        cefrLevel
+      };
+    }),
+    // Adapt a paragraph on-the-fly
+    adaptParagraph: publicProcedure.input(
+      z3.object({
+        contentId: z3.number(),
+        chapterNumber: z3.number(),
+        paragraphIndex: z3.number(),
+        currentLevel: z3.number().min(1).max(4),
+        targetLevel: z3.number().min(1).max(4)
+      })
+    ).mutation(async ({ input, ctx }) => {
+      const clientIP = getClientIP({ headers: ctx.req.headers });
+      const rateLimitKey = `adapt_paragraph:${clientIP}`;
+      const allowed = checkRateLimit(rateLimitKey, 50, 24 * 60 * 60 * 1e3);
+      if (!allowed) {
+        throw new Error("Rate limit exceeded: Maximum 50 paragraph adaptations per day");
+      }
+      const existing = await getParagraphVariant(
+        input.contentId,
+        input.chapterNumber,
+        input.paragraphIndex,
+        input.targetLevel
+      );
+      if (existing) {
+        return { text: existing.text };
+      }
+      const original = await getParagraphVariant(
+        input.contentId,
+        input.chapterNumber,
+        input.paragraphIndex,
+        4
+      );
+      if (!original) {
+        throw new Error("Paragraph not found");
+      }
+      const adaptedText = await adaptParagraph(
+        original.text,
+        input.currentLevel,
+        input.targetLevel
+      );
+      await createParagraphVariant({
+        contentId: input.contentId,
+        chapterNumber: input.chapterNumber,
+        paragraphIndex: input.paragraphIndex,
+        level: input.targetLevel,
+        text: adaptedText,
+        originalText: original.text
+      });
+      return { text: adaptedText };
+    }),
+    // Upload text file directly (simpler than PDF)
+    uploadText: publicProcedure.input(
+      z3.object({
+        title: z3.string().min(1),
+        author: z3.string().optional(),
+        textContent: z3.string().min(100)
+        // At least 100 characters
+      })
+    ).mutation(async ({ input, ctx }) => {
+      const clientIP = getClientIP({ headers: ctx.req.headers });
+      const rateLimitKey = `text_upload:${clientIP}`;
+      const allowed = checkRateLimit(rateLimitKey, 10, 24 * 60 * 60 * 1e3);
+      if (!allowed) {
+        throw new Error("Rate limit exceeded: Maximum 10 uploads per day");
+      }
+      const paragraphs = input.textContent.split(/\n\s*\n+/).map((p) => p.replace(/\s+/g, " ").trim()).filter((p) => p.length > 50).filter((p) => !p.match(/^\d+$/));
+      if (paragraphs.length === 0) {
+        throw new Error("No valid paragraphs found in text. Please ensure your text has proper paragraph breaks.");
+      }
+      const sampleText = paragraphs.slice(0, 3).join(" ");
+      const cefrLevel = classifyTextCEFRCached(sampleText);
+      const wordCount = input.textContent.split(/\s+/).length;
+      const contentResult = await createContent({
+        title: input.title,
+        author: input.author || null,
+        originalText: input.textContent,
+        baseDifficulty: 4,
+        // Default to level 4 (original)
+        wordCount,
+        category: "text_upload",
+        sourceType: "pdf_upload",
+        // Reuse same type for simplicity
+        pdfUrl: null,
+        cefrLevel
+      });
+      const contentId = contentResult.id;
+      for (let i = 0; i < paragraphs.length; i++) {
+        await createParagraphVariant({
+          contentId,
+          chapterNumber: 1,
+          paragraphIndex: i,
+          level: 4,
+          text: paragraphs[i],
+          originalText: paragraphs[i]
+        });
+      }
+      return {
+        contentId,
+        title: input.title,
+        author: input.author,
+        paragraphCount: paragraphs.length,
+        cefrLevel
+      };
     })
   }),
   reading: router({
@@ -1359,7 +1793,7 @@ var appRouter = router({
         completedParagraphs: 0,
         status: "active"
       });
-      return { sessionId: result.insertId };
+      return { sessionId: result.id };
     }),
     getActiveSession: protectedProcedure.query(async ({ ctx }) => {
       return await getActiveSessionByUserId(ctx.user.id);
@@ -1375,7 +1809,7 @@ var appRouter = router({
         difficultyLevel: input.difficultyLevel,
         comprehensionScore: input.comprehensionScore,
         timeSpent: input.timeSpent,
-        manualAdjustment: input.manualAdjustment ? 1 : 0
+        manualAdjustment: input.manualAdjustment || false
       });
       await updateReadingSession(input.sessionId, {
         currentPosition: input.paragraphIndex,
@@ -1421,41 +1855,47 @@ import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 var plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime()];
-var vite_config_default = defineConfig({
-  plugins,
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
+var vite_config_default = defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  return {
+    plugins,
+    define: {
+      "import.meta.env.VITE_ENABLE_AUTH": JSON.stringify(env.VITE_ENABLE_AUTH || "false")
+    },
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets")
+      }
+    },
+    envDir: path.resolve(import.meta.dirname),
+    root: path.resolve(import.meta.dirname, "client"),
+    publicDir: path.resolve(import.meta.dirname, "client", "public"),
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true
+    },
+    server: {
+      host: true,
+      allowedHosts: [
+        ".manuspre.computer",
+        ".manus.computer",
+        ".manus-asia.computer",
+        ".manuscomputer.ai",
+        ".manusvm.computer",
+        "localhost",
+        "127.0.0.1"
+      ],
+      fs: {
+        strict: true,
+        deny: ["**/.*"]
+      }
     }
-  },
-  envDir: path.resolve(import.meta.dirname),
-  root: path.resolve(import.meta.dirname, "client"),
-  publicDir: path.resolve(import.meta.dirname, "client", "public"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
-  },
-  server: {
-    host: true,
-    allowedHosts: [
-      ".manuspre.computer",
-      ".manus.computer",
-      ".manus-asia.computer",
-      ".manuscomputer.ai",
-      ".manusvm.computer",
-      "localhost",
-      "127.0.0.1"
-    ],
-    fs: {
-      strict: true,
-      deny: ["**/.*"]
-    }
-  }
+  };
 });
 
 // server/_core/vite.ts
@@ -1530,7 +1970,11 @@ async function startServer() {
   const server = createServer(app);
   app.use(express2.json({ limit: "50mb" }));
   app.use(express2.urlencoded({ limit: "50mb", extended: true }));
-  registerOAuthRoutes(app);
+  if (ENV.oAuthServerUrl) {
+    registerOAuthRoutes(app);
+  } else {
+    console.warn("[OAuth] Skipping OAuth routes; OAUTH_SERVER_URL not set.");
+  }
   app.use(
     "/api/trpc",
     createExpressMiddleware({
